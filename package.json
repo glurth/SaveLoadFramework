@@ -1,0 +1,12 @@
+{
+  "name": "com.glurth.saveloadframework",
+  "version": "1.0.0",
+  "displayName": "SaveLoadFramework",
+  "description": "granular serialization. unity runtime compatible",
+  "unity": "2019.1",
+  "dependencies": {},
+  "author": {
+    "name": "Glurth"
+  },
+  "hideInEditor": "false"
+}
