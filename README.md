@@ -60,15 +60,14 @@ using EyE.Serialization;
 [SaveLoadHandler(typeof(Vector3))]
 public static class Vector3SaveLoad
 {
-    public static void Save(IDataWriter writer, object obj)
+    public static void Save(IDataWriter writer, Vector3 v)
     {
-        Vector3 v = (Vector3)obj;
         writer.Write(v.x, "x");
         writer.Write(v.y, "y");
         writer.Write(v.z, "z");
     }
 
-    public static object Load(IDataReader reader)
+    public static Vector3 Load(IDataReader reader)
     {
         float x = reader.Read<float>("x");
         float y = reader.Read<float>("y");
@@ -86,16 +85,16 @@ Choose a backend (`BinaryDataWriter/BinaryDataReader` or `JsonDataWriter/JsonDat
 
 ```csharp
 // JSON Example
-using (var sw = new StreamWriter("player.json"))
+using StreamWriter sw = new StreamWriter("player.json"))
 {
     var writer = new JsonDataWriter(sw);
     playerData.Serialize(writer);
     writer.Flush();
 }
 
-using (var sr = new StreamReader("player.json"))
+using StreamReader sr = new StreamReader("player.json"))
 {
-    var reader = new JsonDataReader(sr);
+    JsonDataReader reader = new JsonDataReader(sr);
     PlayerData loaded = PlayerData.ReadAndCreate(reader);
 }
 ```
