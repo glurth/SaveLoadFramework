@@ -89,13 +89,20 @@ namespace EyE.Serialization
                         if (save == null || load == null)
                             throw new InvalidOperationException($"Missing Save/Load methods for {targetType.FullName} in {type.FullName}");
 
-                        handlers[targetType] = new SaveLoadHandlerFunctions
+                        /*handlers[targetType] = new SaveLoadHandlerFunctions
                         {
                             writer = (Action<IDataWriter, object>)Delegate.CreateDelegate(
                                 typeof(Action<IDataWriter, object>), save),
                             reader = (Func<IDataReader, object>)Delegate.CreateDelegate(
                                 typeof(Func<IDataReader, object>), load)
+
+                        };*/
+                        handlers[targetType] = new SaveLoadHandlerFunctions
+                        {
+                            writer = (w, o) => save.Invoke(null, new object[] { w, o }),
+                            reader = (r) => load.Invoke(null, new object[] { r })
                         };
+
                     }
                 }
             }
@@ -134,14 +141,14 @@ namespace EyE.Serialization
     [SaveLoadHandler(typeof(UnityEngine.Object))]
     public static class UnityObjectHandler
     {
-        public static void Save(IDataWriter writer, object obj)
+        public static void Save(IDataWriter writer, UnityEngine.Object obj)
         {
             UnityEngine.Object unityObj = (UnityEngine.Object)obj;
             string path = ResourceReferenceManager.GetPathOfObject(unityObj);
             writer.Write(path,"UnityObject");
         }
 
-        public static object Load(IDataReader reader)
+        public static UnityEngine.Object Load(IDataReader reader)
         {
             string path = reader.Read<string>("UnityObject");
             return ResourceReferenceManager.GetObjectByPath(path);

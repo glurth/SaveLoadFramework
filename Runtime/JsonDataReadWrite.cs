@@ -34,8 +34,6 @@ namespace EyE.Serialization
         }
 
         List<JsonKVP> jsonElements = new List<JsonKVP>();
-        int level = 0;
-
         private Stack<Context> contextStack = new Stack<Context>();
         private bool isRootWritten = false;
 
@@ -315,11 +313,11 @@ namespace EyE.Serialization
                 jsonString = Quote(jsonString);
                 return true;
             }
-            else if(false)// (value is UnityEngine.Object so)
+            /*else if(value is UnityEngine.Object so)
             {
-               // jsonString = ResourceReferenceManager.GetPathOfObject(so);
+                jsonString = ResourceReferenceManager.GetPathOfObject(so);
                 return true;
-            }
+            }*/
 
             jsonString = null;
             return false;
@@ -700,13 +698,13 @@ namespace EyE.Serialization
                 output = (T)result;
                 return true;
             }
-            else if (false)//(typeof(UnityEngine.Object).IsAssignableFrom(typeofT))
+            /*else if(typeof(UnityEngine.Object).IsAssignableFrom(typeofT))
             {
                 output = (T)(object)ResourceReferenceManager.GetObjectByPath(jsonInput);
                 return true;
-            }
+            }*/
 
-            output = (T)(object)null;
+            output = default(T);// (T)(object)null;
             return false;
         }
         #endregion
