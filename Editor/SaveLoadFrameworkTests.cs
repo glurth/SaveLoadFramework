@@ -3,7 +3,7 @@ using UnityEngine;
 using System.IO;
 using EyE.Serialization;
 using System.Collections.Generic;
-
+using System;
 // Example 1: Class using ISaveLoad Interface
 public class TestData : ISaveLoad
 {
@@ -48,8 +48,30 @@ public static class Vector3SaveLoad
 
 public static class SaveLoadFrameworkTests
 {
-    [MenuItem("Tools/Run SaveLoadFramework Unit Test (ISaveLoad + Attribute)")]
-    public static void RunTest()
+    [MenuItem("Tools/Run SaveLoadFramework Basic JSON Unit Test (ISaveLoad + Attribute)")]
+    public static void RunJsonTests()
+    {
+        RunTest(
+            writerFactory: sw => new JsonDataWriter(sw),
+            readerFactory: sr => new JsonDataReader(sr),
+            fileExtension: "json"
+        );
+    }
+
+    [MenuItem("Tools/Run SaveLoadFramework Basic BINARY Unit Test (ISaveLoad + Attribute)")]
+    public static void RunBinaryTests()
+    {
+        RunTest(
+            writerFactory: sw => new BinaryDataWriter(new BinaryWriter(sw.BaseStream)),
+            readerFactory: sr => new BinaryDataReader(new BinaryReader(sr.BaseStream)),
+            fileExtension: "bin"
+        );
+    }
+    
+    public static void RunTest(
+            Func<StreamWriter, IDataWriter> writerFactory,
+            Func<StreamReader, IDataReader> readerFactory,
+            string fileExtension)
     {
         Debug.Log("=== SaveLoadFramework Unit Test ===");
 
@@ -62,8 +84,9 @@ public static class SaveLoadFrameworkTests
         // Serialize
         using (var sw = new StreamWriter(path1))
         {
-            var writer = new JsonDataWriter(sw);
-            data.Serialize(writer);
+            var writer = writerFactory(sw); //new JsonDataWriter(sw);
+            writer.Write<TestData>(data,"TestDataObject");
+            //data.Serialize(writer);
             writer.Close();
         }
 
@@ -71,12 +94,12 @@ public static class SaveLoadFrameworkTests
         TestData loaded;
         using (var sr = new StreamReader(path1))
         {
-            var reader = new JsonDataReader(sr);
-            loaded = TestData.ReadAndCreate(reader);
+            var reader = readerFactory(sr);// new JsonDataReader(sr);
+            loaded = reader.Read<TestData>("TestDataObject");// TestData.ReadAndCreate(reader);
         }
 
         bool pass1 = (loaded.intValue == data.intValue) && (loaded.stringValue == data.stringValue);
-        Debug.Log($"ISaveLoad Test: intValue={loaded.intValue}, stringValue={loaded.stringValue}");
+        Debug.Log($"ISaveLoad Test:  orginal---intValue={data.intValue}, stringValue={data.stringValue}     Loaded--intValue={loaded.intValue}, stringValue={loaded.stringValue}");
 
         if (pass1)
             Debug.Log("<color=green>ISaveLoad PASSED</color>");
@@ -93,8 +116,8 @@ public static class SaveLoadFrameworkTests
         // Serialize
         using (FileStream fs = File.Create(path2))
         {
-            var writer = new JsonDataWriter(new StreamWriter(fs));
-            writer.Write(vec, "vector");
+            var writer = writerFactory(new StreamWriter(fs));// new JsonDataWriter(new StreamWriter(fs));
+            writer.Write<Vector3>(vec, "vector");
             writer.Close(); // Needed to write closing }
         }
 
@@ -102,7 +125,7 @@ public static class SaveLoadFrameworkTests
         Vector3 loadedVec;
         using (FileStream fs = File.OpenRead(path2))
         {
-            var reader = new JsonDataReader(new StreamReader(fs));
+            var reader = readerFactory(new StreamReader(fs));// new JsonDataReader(new StreamReader(fs));
             loadedVec = reader.Read<Vector3>("vector");
         }
 

@@ -18,11 +18,12 @@ namespace EyE.Serialization
         /// </summary>
         /// <param name="writer">The BinaryWriter to use for writing.</param>
         public BinaryDataWriter(BinaryWriter writer) => this.writer = writer;
-
+        public void Close() { }
         /// <inheritdoc/>
         public void Write<T>(T value, string fieldName = null)
         {
-            if (value is int i) writer.Write(i);
+            if (value is null) writer.Write("null");
+            else if (value is int i) writer.Write(i);
             else if (value is float f) writer.Write(f);
             else if (value is string s) writer.Write(s);
             else if (value is bool b) writer.Write(b);
@@ -52,7 +53,7 @@ namespace EyE.Serialization
                     .MakeGenericMethod(args[0], args[1])
                     .Invoke(null, new object[] { this, value, fieldName, "value" });
             }
-            else if (value == null) writer.Write("null");
+           // else if (value == null) writer.Write("null");
             else throw new InvalidOperationException("BinaryDataWriter- Unsupported type<" + value.GetType() + ">");
         }
     }
@@ -77,21 +78,27 @@ namespace EyE.Serialization
 
             if (typeof(T) == typeof(int)) result = reader.ReadInt32();
             else if (typeof(T) == typeof(float)) result = reader.ReadSingle();
-            else if (typeof(T) == typeof(string)) result = reader.ReadString();
+            else if (typeof(T) == typeof(string))
+            {
+                result = reader.ReadString();
+                bool isNull = (string)result == "null";
+                if (isNull) 
+                    result = null;
+            }
             else if (typeof(T) == typeof(bool)) result = reader.ReadBoolean();
             else if (typeof(T) == typeof(long)) result = reader.ReadInt64();
             else if (typeof(T) == typeof(double)) result = reader.ReadDouble();
             else if (typeof(T).IsEnum) result = (T)Enum.ToObject(typeof(T), reader.ReadInt32());
             else if (SaveLoadRegistry.TryGetReader(typeof(T), out Func<IDataReader, object> readFunction))
             {
-                result=readFunction(this);
+                result = readFunction(this);
             }
-           // else if (typeof(UnityEngine.Object).IsAssignableFrom(typeof(T))) result = ResourceReferenceManager.GetObjectByPath(reader.ReadString());
+            // else if (typeof(UnityEngine.Object).IsAssignableFrom(typeof(T))) result = ResourceReferenceManager.GetObjectByPath(reader.ReadString());
             else if (typeof(T).IsGenericType &&
                      typeof(T).GetGenericTypeDefinition() == typeof(List<>))
             {
                 Type[] genericParams = typeof(T).GetGenericArguments();//what type are the elements os the list?
-                //note: we ASSUME the correct number of generic parameters is returned in the array
+                                                                       //note: we ASSUME the correct number of generic parameters is returned in the array
                 var method = typeof(IDataBinaryCollectionExtensionFunctions)
                     .GetMethod("ReadAndCreateList")
                     .MakeGenericMethod(genericParams[0]);  // Get/create the appropriate concrete-variant of the generic IDataCollectionExtensionFunctions.ReadAndCreateList method
@@ -101,7 +108,7 @@ namespace EyE.Serialization
                      typeof(T).GetGenericTypeDefinition() == typeof(Dictionary<,>))
             {
                 Type[] genericParams = typeof(T).GetGenericArguments();//what types are the key and value of the dictionary?
-                //note: we ASSUME the correct number of generic parameters is returned in the array
+                                                                       //note: we ASSUME the correct number of generic parameters is returned in the array
                 MethodInfo method = typeof(IDataBinaryCollectionExtensionFunctions)
                     .GetMethod("ReadAndCreateDictionary")
                     .MakeGenericMethod(genericParams[0], genericParams[1]);  // Get/create the appropriate concrete-variant of the generic IDataCollectionExtensionFunctions.ReadAndCreateDictionary method

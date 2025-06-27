@@ -3,6 +3,7 @@ using UnityEngine;
 using System.IO;
 using System.Collections.Generic;
 using EyE.Serialization;
+using System;
 
 // Test class with various nested/complex types
 public class ComplexData : ISaveLoad
@@ -36,8 +37,30 @@ public class ComplexData : ISaveLoad
 
 public static class SaveLoadFrameworkAdvancedTests
 {
-    [MenuItem("Tools/Run SaveLoadFramework Advanced Tests")]
-    public static void RunAdvancedTests()
+    [MenuItem("Tools/Run SaveLoadFramework Advanced JSON Tests")]
+    public static void RunAdvancedJsonTests()
+    {
+        RunAdvancedTests(
+            writerFactory: sw => new JsonDataWriter(sw),
+            readerFactory: sr => new JsonDataReader(sr),
+            fileExtension: "json"
+        );
+    }
+
+    [MenuItem("Tools/Run SaveLoadFramework Advanced Binary Tests")]
+    public static void RunAdvancedBinaryTests()
+    {
+        RunAdvancedTests(
+            writerFactory: sw => new BinaryDataWriter(new BinaryWriter(sw.BaseStream)),
+            readerFactory: sr => new BinaryDataReader(new BinaryReader(sr.BaseStream)),
+            fileExtension: "bin"
+        );
+    }
+
+    private static void RunAdvancedTests(
+    Func<StreamWriter, IDataWriter> writerFactory,
+    Func<StreamReader, IDataReader> readerFactory,
+    string fileExtension)
     {
         Debug.Log("=== SaveLoadFramework Advanced/Edge Case Tests ===");
         bool allPass = true;
@@ -58,18 +81,17 @@ public static class SaveLoadFrameworkAdvancedTests
                 Directory.CreateDirectory(resourcesPath);
                 PrefabUtility.SaveAsPrefabAsset(tempCube, prefabAssetPath);
                 GameObject.DestroyImmediate(tempCube);
-                //AssetDatabase.SaveAssets();
-                //AssetDatabase.Refresh();
-                //loaded1 = Resources.Load<GameObject>(n);
+
                 Debug.Log($"Created and saved prefab '{n}' in Resources.");
             }
-            //if (loaded1 != null)
-              //  testPrefabs.Add(loaded1);
+
         }
         //rebuild ResourceReferenceManager
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
         ResourceReferenceManager.BuildNew();
+        
+        //load test prefabs from disk
         foreach (var n in prefabNames)
         {
             GameObject loaded1 = Resources.Load<GameObject>(n);
@@ -107,8 +129,9 @@ public static class SaveLoadFrameworkAdvancedTests
         // Serialize
         using (var sw = new StreamWriter(jsonPath))
         {
-            var writer = new JsonDataWriter(sw);
-            complex.Serialize(writer);
+            var writer = writerFactory(sw); //new  JsonDataWriter(sw);
+            writer.Write(complex, "Complex1");
+            //complex.Serialize(writer);
             writer.Close();
         }
 
@@ -116,7 +139,7 @@ public static class SaveLoadFrameworkAdvancedTests
         ComplexData loaded;
         using (var sr = new StreamReader(jsonPath))
         {
-            var reader = new JsonDataReader(sr);
+            var reader = readerFactory(sr);// new JsonDataReader(sr);
             loaded= reader.Read<ComplexData>(null);
             //loaded = ComplexData.ReadAndCreate(reader);
         }
@@ -216,14 +239,15 @@ public static class SaveLoadFrameworkAdvancedTests
         string emptyJsonPath = Path.Combine(Application.dataPath, "advancedtest_empty.json");
         using (var sw = new StreamWriter(emptyJsonPath))
         {
-            var writer = new JsonDataWriter(sw);
-            edge.Serialize(writer);
+            var writer = writerFactory(sw); //new JsonDataWriter(sw);
+            writer.Write(edge, "Complex Data");
+            //edge.Serialize(writer);
             writer.Close();
         }
         ComplexData loadedEdge;
         using (var sr = new StreamReader(emptyJsonPath))
         {
-            var reader = new JsonDataReader(sr);
+            var reader = readerFactory(sr);//new JsonDataReader(sr);
             loadedEdge = reader.Read<ComplexData>(null);
             //loadedEdge = ComplexData.ReadAndCreate(reader);
         }

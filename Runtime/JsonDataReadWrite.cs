@@ -242,7 +242,7 @@ namespace EyE.Serialization
         public JsonDataReader(StreamReader inputStream)
         {
             reader = inputStream;
-            //SkipOpeningBrace();
+            SkipOpeningBrace();
         }
 
         /// <summary>

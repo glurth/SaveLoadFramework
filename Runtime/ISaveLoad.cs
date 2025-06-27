@@ -18,6 +18,7 @@ namespace EyE.Serialization
         /// <param name="value">The value to write.</param>
         void Write<T>(T value, string fieldName);
 
+        void Close();
     }
 
     /// <summary>
