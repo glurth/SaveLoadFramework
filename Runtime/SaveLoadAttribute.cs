@@ -110,23 +110,36 @@ namespace EyE.Serialization
 
         public static bool TryGetWriter(Type type, out Action<IDataWriter, object> writer)
         {
-            ScanAndRegisterAll();// return immediately if already done
-            if (handlers.TryGetValue(type, out var handler) && handler.writer != null)
+            ScanAndRegisterAll();// returns immediately if already done
+            Type origType = type;
+            while (type != null)
             {
-                writer = handler.writer;
-                return true;
+                if (handlers.TryGetValue(type, out var handler) && handler.writer != null)
+                {
+                    writer = handler.writer;
+                    if (type != origType) Debug.Log("SaveLoadRegistry Using writer for base type <" + type + ">, unable to find one for passed in type <" + origType + ">");
+                    return true;
+                }
+                type = type.BaseType;
             }
             writer = null;
+            
             return false;
         }
 
         public static bool TryGetReader(Type type, out Func<IDataReader, object> reader)
         {
-            ScanAndRegisterAll();// return immediately if already done
-            if (handlers.TryGetValue(type, out var handler) && handler.reader != null)
+            ScanAndRegisterAll();// returns immediately if already done
+            Type origType = type;
+            while (type != null)
             {
-                reader = handler.reader;
-                return true;
+                if (handlers.TryGetValue(type, out var handler) && handler.reader != null)
+                {
+                    reader = handler.reader;
+                    if (type != origType) Debug.LogWarning("SaveLoadRegistry Using reader for base type <" + type + ">, unable to find one for passed in type <"+origType+">");
+                    return true;
+                }
+                type = type.BaseType;
             }
             reader = null;
             return false;

@@ -47,14 +47,15 @@ namespace EyE.Serialization
         [SerializeField]
         private List<Entry> entries = new List<Entry>();
 
-        static public ResourceReferenceManager Create(List<Entry> entries)
+        static private ResourceReferenceManager Create(List<Entry> entries)
         {
             ResourceReferenceManager manager = ScriptableObject.CreateInstance<ResourceReferenceManager>();
             manager.entries = entries;
+            manager.BuildLookup();
             return manager;
         }
 
-        private Dictionary<UnityEngine.Object, string> objectToPathDict = null;
+        private Dictionary<UnityEngine.Object, string> objectToPathDict = new Dictionary<Object, string>();
         private static ResourceReferenceManager instance = null;
 
         private static string OutputPath => storagePath + "/" + filenameWithExtension;
@@ -105,6 +106,20 @@ namespace EyE.Serialization
 
         #endregion
 
+        static string AssetPathToResourcesPath(string assetPath)
+        {
+            const string resourcesFolder = "/Resources/";
+            int index = assetPath.IndexOf(resourcesFolder, System.StringComparison.OrdinalIgnoreCase);
+            if (index == -1)
+                throw new System.ArgumentException("Asset path is not inside a Resources folder: " + assetPath);
+
+            int start = index + resourcesFolder.Length;
+            string path = assetPath.Substring(start);
+            int lastDot = path.LastIndexOf('.');
+            if (lastDot != -1)
+                path = path.Substring(0, lastDot);
+            return path.Replace('\\', '/');
+        }
 
 #if UNITY_EDITOR
         /// <summary>
@@ -114,6 +129,7 @@ namespace EyE.Serialization
         [UnityEditor.MenuItem("Tools/Build ResourceManager Asset")]
         public static void BuildNew()
         {
+            Debug.Log("starting rebuild of ResourceManager Asset");
             UnityEngine.Object[] allAssets = Resources.LoadAll<UnityEngine.Object>("");
 
             List<ResourceReferenceManager.Entry> entries = new List<ResourceReferenceManager.Entry>();
@@ -124,19 +140,10 @@ namespace EyE.Serialization
                 if (asset == instance) continue;
 
                 string fullPath = UnityEditor.AssetDatabase.GetAssetPath(asset); //this function is our limiter- only available in unity editor- which is the reason this class exists.
-                int resourcesIndex = fullPath.IndexOf("Resources/");
-                if (resourcesIndex == -1) continue;
-
-                string relativePath = fullPath.Substring(resourcesIndex + 10);
-                int extIndex = relativePath.LastIndexOf('.');
-                if (extIndex != -1)
-                {
-                    relativePath = relativePath.Substring(0, extIndex);
-                }
 
                 ResourceReferenceManager.Entry entry = new ResourceReferenceManager.Entry();
                 entry.asset = asset;
-                entry.path = relativePath;
+                entry.path = AssetPathToResourcesPath(fullPath);
                 entries.Add(entry);
             }
 

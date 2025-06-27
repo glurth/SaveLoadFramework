@@ -12,8 +12,8 @@ public class TestData : ISaveLoad
 
     public void Serialize(IDataWriter writer)
     {
-        writer.Write(intValue, nameof(intValue));
-        writer.Write(stringValue, nameof(stringValue));
+        writer.Write(intValue, "intValue");
+        writer.Write(stringValue,"stringValue");
     }
 
     public static TestData ReadAndCreate(IDataReader reader)
@@ -64,7 +64,7 @@ public static class SaveLoadFrameworkTests
         {
             var writer = new JsonDataWriter(sw);
             data.Serialize(writer);
-            writer.Flush();
+            writer.Close();
         }
 
         // Deserialize
@@ -91,19 +91,19 @@ public static class SaveLoadFrameworkTests
         string path2 = Path.Combine(Application.dataPath, "vector3.json");
 
         // Serialize
-        using (var sw = new StreamWriter(path2))
+        using (FileStream fs = File.Create(path2))
         {
-            var writer = new JsonDataWriter(sw);
-            writer.Write(vec, "vector"); // Attribute-based handler should be invoked
-            writer.Flush();
+            var writer = new JsonDataWriter(new StreamWriter(fs));
+            writer.Write(vec, "vector");
+            writer.Close(); // Needed to write closing }
         }
 
         // Deserialize
         Vector3 loadedVec;
-        using (var sr = new StreamReader(path2))
+        using (FileStream fs = File.OpenRead(path2))
         {
-            var reader = new JsonDataReader(sr);
-            loadedVec = reader.Read<Vector3>("vector"); // Attribute-based handler should be invoked
+            var reader = new JsonDataReader(new StreamReader(fs));
+            loadedVec = reader.Read<Vector3>("vector");
         }
 
         bool pass2 = Mathf.Approximately(loadedVec.x, vec.x) &&
@@ -125,7 +125,7 @@ public static class SaveLoadFrameworkTests
             Debug.LogError("<color=red>One or more SaveLoadFramework tests FAILED</color>");
 
         // Clean up
-        if (File.Exists(path1)) File.Delete(path1);
-        if (File.Exists(path2)) File.Delete(path2);
+     //   if (File.Exists(path1)) File.Delete(path1);
+    //    if (File.Exists(path2)) File.Delete(path2);
     }
 }

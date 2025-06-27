@@ -11,29 +11,7 @@ namespace EyE.Serialization
     /// </summary>
     public class JsonDataWriter : IDataWriter
     {
-        class JsonKVP
-        {
 
-            public string name;  //if this is null- kvp is a list element only
-            public bool elementIsNextLevelSet => element == null;
-            public string element; //if this is null- kvp is a fieldname only- value is next level down- used for collections/ objects with sub fields
-            public int level;
-
-            public JsonKVP(string name, string element, int level)
-            {
-                this.name = name;
-                this.element = element;
-                this.level = level;
-            }
-            public JsonKVP(string name, int level)
-            {
-                this.name = name;
-                this.element = null;
-                this.level = level;
-            }
-        }
-
-        List<JsonKVP> jsonElements = new List<JsonKVP>();
         private Stack<Context> contextStack = new Stack<Context>();
         private bool isRootWritten = false;
 
@@ -48,144 +26,33 @@ namespace EyE.Serialization
 
         StreamWriter writer;
         public JsonDataWriter(StreamWriter writer) => this.writer = writer;
+        bool isClosed = false;
+        public void Close()
+        {
+            if (isClosed) return;
+
+            if (isRootWritten && contextStack.Count == 1)
+            {
+                writer.WriteLine();
+                writer.Write("}");
+                contextStack.Pop();
+            }
+
+            writer.Flush();
+            isClosed = true;
+        }
+
+        public void Dispose()//automatically called on using(){} close
+        {
+            Close(); // delegate to manual Close()
+        }
+
         public void Flush()
         {
-            string json = GetJson();
-            writer.Write(json);
+            writer.Flush();
         }
 
         enum LevelType { objectLevel, listElement, ListStart }
-        private string GetJson()
-        {
-
-            System.Text.StringBuilder sb = new System.Text.StringBuilder();
-            Stack<LevelType> levelIsAListElement = new Stack<LevelType>();
-            int currentLevel = 0;
-
-            void CloseLevels(int toLevel, int currentIndex)
-            {
-                while (currentLevel > toLevel)
-                {
-                    currentLevel--;
-
-                    // Find the element that opened the level we are now closing
-                    int openingElementIndex = -1;
-                    // Start searching from the element before the current one
-                    int searchFrom = (currentIndex < jsonElements.Count) ? currentIndex - 1 : jsonElements.Count - 1;
-                    for (int j = searchFrom; j >= 0; j--)
-                    {
-                        // An opening element is a container (element is null) at the level we're closing to
-                        if (jsonElements[j].level == currentLevel && jsonElements[j].element == null)
-                        {
-                            openingElementIndex = j;
-                            break;
-                        }
-                    }
-
-                    LevelType lvlType = levelIsAListElement.Pop();
-                    string closeBrcket = "}";
-                    if (lvlType == LevelType.listElement)
-                    {
-                        closeBrcket = "}";
-                    }
-                    if (lvlType == LevelType.ListStart)
-                    {
-                        closeBrcket = "]";
-                    }
-                    sb.Append(new string(' ', (currentLevel + 1) * 2));
-                    sb.Append(closeBrcket);
-
-                    // Check if the OPENING element is the last in ITS level.
-                    if (openingElementIndex == -1 || isLastElementInLevel(openingElementIndex))
-                    {
-                        sb.AppendLine(); // No comma needed
-                    }
-                    else
-                    {
-                        sb.AppendLine(","); // Add the missing comma
-                    }
-                }
-            }
-
-            bool isLastElementInLevel(int elementIndex)
-            {
-
-
-                int level = jsonElements[elementIndex].level;
-                for (int i = elementIndex + 1; i < jsonElements.Count; i++)
-                {
-                    if (jsonElements[i].level == level) return false;
-                    if (jsonElements[i].level < level) return true;
-                }
-                return true;
-            }
-            bool nextIsListStart(int index)
-            {
-                return index + 1 < jsonElements.Count
-                    && jsonElements[index + 1].name == null
-                    && jsonElements[index + 1].element == null;
-            }
-
-            for (int i = 0; i < jsonElements.Count; i++)
-            {
-                var kvp = jsonElements[i];
-                CloseLevels(kvp.level, i);
-
-                string indent = new string(' ', (kvp.level + 1) * 2);
-
-                if (kvp.name == null)// no name means this is a list element
-                {
-                    // list element
-                    if (kvp.element == null)//element is a object with a sub level
-                    {
-                        sb.AppendLine(indent + "{");
-                        currentLevel++;
-                        levelIsAListElement.Push(LevelType.listElement);
-                    }
-                    else
-                    {
-                        if (isLastElementInLevel(i))
-                            sb.AppendLine(indent + kvp.element);
-                        else
-                            sb.AppendLine(indent + kvp.element + ",");
-                    }
-                }
-                else
-                {
-                    if (kvp.element == null)//element is a object with a sub level
-                    {
-                        if (nextIsListStart(i))
-                        {
-                            sb.AppendLine(indent + $"\"{kvp.name}\": [");
-                            currentLevel++;
-                            levelIsAListElement.Push(LevelType.ListStart);
-                        }
-                        else
-                        {
-                            sb.AppendLine(indent + $"\"{kvp.name}\": {{");
-                            currentLevel++;
-                            levelIsAListElement.Push(LevelType.objectLevel);
-                        }
-
-                        //sb.AppendLine(indent + $"\"{kvp.name}\": {{");//draw name and open curly
-                        //currentLevel++;
-                        //levelIsAListElement.Push(false);
-                    }
-                    else
-                    {
-                        if (isLastElementInLevel(i))
-                            sb.AppendLine(indent + $"\"{kvp.name}\": {kvp.element}");
-                        else
-                            sb.AppendLine(indent + $"\"{kvp.name}\": {kvp.element},");
-                    }
-                }
-            }
-
-            CloseLevels(0, jsonElements.Count);// -1);
-
-            string result = sb.ToString().TrimEnd(',', '\n', '\r');
-            return "{" + Environment.NewLine + result + Environment.NewLine + "}";
-        }
 
         //IDataWriter required function
         public void Write<T>(T value, string fieldName)
@@ -204,10 +71,14 @@ namespace EyE.Serialization
             if (contextStack.Count > 0)
                 contextStack.Peek().IsFirst = false;
 
-            if (!string.IsNullOrEmpty(fieldName))
+            WriteIndent();
+            if (!string.IsNullOrEmpty(fieldName))//write key
             {
-                WriteIndent();
-                writer.Write($"\"{fieldName}\": ");
+
+                if (fieldName.Length >= 2 && fieldName[0] == '"' && fieldName[^1] == '"')
+                    writer.Write($"{fieldName}: ");
+                else
+                    writer.Write($"\"{fieldName}\": ");
             }
 
             if (TrySerializeAtomicValueJsonString(value, out string jsonValue))
@@ -222,67 +93,76 @@ namespace EyE.Serialization
             }
             else if (SaveLoadRegistry.TryGetWriter(value.GetType(), out Action<IDataWriter, object> writeFunction))
             {
+                BeginObject();
                 writeFunction(this, value);
+                EndObject();
             }
             else if (typeof(T).IsGenericType &&
                      typeof(T).GetGenericTypeDefinition() == typeof(Dictionary<,>))
             {
-                BeginObject();
+               // BeginObject();
                 Type[] types = typeof(T).GetGenericArguments();
                 var method = typeof(JsonDataWriter).GetMethod("SerializeDictionary", BindingFlags.Instance | BindingFlags.NonPublic)
                     .MakeGenericMethod(types[0], types[1]);
                 method.Invoke(this, new object[] { value });
-                EndObject();
+               // EndObject();
             }
             else if (typeof(T).IsGenericType &&
                      typeof(T).GetGenericTypeDefinition() == typeof(List<>))
             {
-                BeginArray();
+                // BeginArray();
                 Type elementType = typeof(T).GetGenericArguments()[0];
                 var method = typeof(JsonDataWriter).GetMethod("SerializeList", BindingFlags.Instance | BindingFlags.NonPublic)
                     .MakeGenericMethod(elementType);
                 method.Invoke(this, new object[] { value });
-                EndArray();
+                // EndArray();
             }
             else
             {
                 throw new NotSupportedException($"Unsupported type: {typeof(T)}");
             }
-
-            void BeginObject()
-            {
-                writer.WriteLine("{");
-                contextStack.Push(new Context(Context.ContextType.Object));
-            }
-
-            void EndObject()
-            {
-                writer.WriteLine();
-                contextStack.Pop();
-                WriteIndent();
-                writer.Write("}");
-            }
-
-            void BeginArray()
-            {
-                writer.WriteLine("[");
-                contextStack.Push(new Context(Context.ContextType.Array));
-            }
-
-            void EndArray()
-            {
-                writer.WriteLine();
-                contextStack.Pop();
-                WriteIndent();
-                writer.Write("]");
-            }
-
-            void WriteIndent()
-            {
-                writer.Write(new string(' ', contextStack.Count * 2));
-            }
-
+            return;
         }
+        void BeginObject()
+        {
+            //  WriteIndent();
+            writer.Write("{");
+            writer.WriteLine();
+            contextStack.Push(new Context(Context.ContextType.Object));
+        }
+
+        void EndObject(bool emptyDictionary = false)
+        {
+            if (!emptyDictionary)
+                writer.WriteLine();
+            contextStack.Pop();
+            WriteIndent();
+            writer.Write("}");
+        }
+
+        void BeginArray()
+        {
+            //   WriteIndent();
+            writer.Write("[");
+            writer.WriteLine();
+            contextStack.Push(new Context(Context.ContextType.Array));
+        }
+
+        void EndArray(bool emptyArray = false)
+        {
+            if (!emptyArray)
+                writer.WriteLine();
+            contextStack.Pop();
+            WriteIndent();
+            writer.Write("]");
+        }
+
+        void WriteIndent()
+        {
+            writer.Write(new string(' ', contextStack.Count * 2));
+        }
+
+
         private string Quote(string rawString)
         {
             return "\"" + rawString + "\"";
@@ -326,15 +206,18 @@ namespace EyE.Serialization
         //referenced via reflection only
         private void SerializeList<T>(List<T> list)
         {
+            BeginArray();
             foreach (T element in list)
             {
                 Write<T>(element, null); // list elements have no field name
             }
+            EndArray(list.Count == 0);
         }
 
         //referenced via reflection only
         private void SerializeDictionary<K, V>(Dictionary<K, V> dict)
         {
+            BeginObject();
             foreach (KeyValuePair<K, V> kvp in dict)
             {
                 if (TrySerializeAtomicValueJsonString<K>(kvp.Key, out string keyString))
@@ -342,6 +225,7 @@ namespace EyE.Serialization
                 else
                     throw new FormatException("JsonDataWriter string generation failure:  Key values must be a single atomic element.  <" + typeof(K) + "> is not Atomic.");
             }
+            EndObject(dict.Count == 0);
         }
     }
 
@@ -358,7 +242,7 @@ namespace EyE.Serialization
         public JsonDataReader(StreamReader inputStream)
         {
             reader = inputStream;
-            SkipOpeningBrace();
+            //SkipOpeningBrace();
         }
 
         /// <summary>
@@ -377,9 +261,12 @@ namespace EyE.Serialization
         //IDataReader interface required function
         public T Read<T>(string expectedFieldName)
         {
-            return ReadWithKey<T>(expectedFieldName, out string ignored);
+            return ReadWithKey<T>(expectedFieldName, out string ignored, out bool ignoredBool);
         }
-
+        public T Read<T>(string expectedFieldName, out bool foundNothing)
+        {
+            return ReadWithKey<T>(expectedFieldName, out string ignored, out foundNothing);
+        }
         /// <summary>
         /// if object is a dictionary entry, this function will provide the key string (via out param), as well as returning the entry's value.
         /// TODO: make json system more robust in future by allowing user to load fields out of order, by specific name
@@ -388,14 +275,17 @@ namespace EyE.Serialization
         /// <param name="expectedFieldName"></param>
         /// <param name="foundFieldName"></param>
         /// <returns></returns>
-        private T ReadWithKey<T>(string expectedFieldName, out string foundFieldName)
+        private T ReadWithKey<T>(string expectedFieldName, out string foundFieldName, out bool foundNothing)
         {
             Type typeofT = typeof(T);
             string valueString;
             foundFieldName = "";
             if (!TryGetNextJsonObjectString(out foundFieldName, out valueString))
-                return default(T);// (object)null;
-
+            {
+                foundNothing = true;
+                return default(T);
+            }
+            foundNothing = false;
             if (TryParseAtomicJson<T>(foundFieldName, valueString, out T outputValue))
             {
                 return outputValue;
@@ -417,7 +307,8 @@ namespace EyE.Serialization
             }
             else if (SaveLoadRegistry.TryGetReader(typeof(T), out Func<IDataReader, object> readFunction))
             {
-                return (T)readFunction(this);
+                JsonDataReader subReader = new JsonDataReader(valueString ?? "");
+                return (T)readFunction(subReader);
             }
             else if (typeofT.IsGenericType &&
                      typeofT.GetGenericTypeDefinition() == typeof(List<>))
@@ -430,7 +321,6 @@ namespace EyE.Serialization
                 MethodInfo method = gmethod.MakeGenericMethod(genericParams[0]);
 
                 //create a stream to read the subvalues 
-                // MemoryStream subStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(valueString ?? ""));
                 JsonDataReader subReader = new JsonDataReader(valueString ?? "");
 
                 //invoke the method on this object
@@ -632,7 +522,7 @@ namespace EyE.Serialization
         private bool TryParseAtomicJson<T>(string fieldName, string jsonInput, out T output)
         {
             Type typeofT = typeof(T);
-            if (jsonInput.Trim() == "null")
+            if (jsonInput==null || jsonInput.Trim() == "null")
             {
                 output = (T)(object)null;
                 return true;
@@ -717,12 +607,15 @@ namespace EyE.Serialization
 
             while (reader.Peek() != -1)
             {
-
+                bool foundNothing;
                 string keyString;
-                V elementValue = ReadWithKey<V>("Value", out keyString);
-                K keyValue;
-                TryParseAtomicJson<K>("Key", keyString, out keyValue);
-                dict.Add(keyValue, elementValue);
+                V elementValue = ReadWithKey<V>("Value", out keyString, out foundNothing);
+                if (!foundNothing)
+                {
+                    K keyValue;
+                    if(TryParseAtomicJson<K>("Key", keyString, out keyValue))
+                        dict.Add(keyValue, elementValue);
+                }
             }
             return dict;
         }
@@ -731,8 +624,10 @@ namespace EyE.Serialization
             List<T> list = new List<T>();
             while (reader.Peek() != -1)
             {
-                T elementValue = Read<T>("list element");
-                list.Add(elementValue);
+                bool foundNothing;
+                T elementValue = Read<T>("list element", out foundNothing);
+                if(!foundNothing)
+                    list.Add(elementValue);
             }
             return list;
         }
