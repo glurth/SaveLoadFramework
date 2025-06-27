@@ -84,9 +84,8 @@ public static class SaveLoadFrameworkTests
         // Serialize
         using (var sw = new StreamWriter(path1))
         {
-            var writer = writerFactory(sw); //new JsonDataWriter(sw);
+            var writer = writerFactory(sw);
             writer.Write<TestData>(data,"TestDataObject");
-            //data.Serialize(writer);
             writer.Close();
         }
 
@@ -94,8 +93,8 @@ public static class SaveLoadFrameworkTests
         TestData loaded;
         using (var sr = new StreamReader(path1))
         {
-            var reader = readerFactory(sr);// new JsonDataReader(sr);
-            loaded = reader.Read<TestData>("TestDataObject");// TestData.ReadAndCreate(reader);
+            var reader = readerFactory(sr);
+            loaded = reader.Read<TestData>("TestDataObject");
         }
 
         bool pass1 = (loaded.intValue == data.intValue) && (loaded.stringValue == data.stringValue);
@@ -116,7 +115,7 @@ public static class SaveLoadFrameworkTests
         // Serialize
         using (FileStream fs = File.Create(path2))
         {
-            var writer = writerFactory(new StreamWriter(fs));// new JsonDataWriter(new StreamWriter(fs));
+            var writer = writerFactory(new StreamWriter(fs));
             writer.Write<Vector3>(vec, "vector");
             writer.Close(); // Needed to write closing }
         }
@@ -125,7 +124,7 @@ public static class SaveLoadFrameworkTests
         Vector3 loadedVec;
         using (FileStream fs = File.OpenRead(path2))
         {
-            var reader = readerFactory(new StreamReader(fs));// new JsonDataReader(new StreamReader(fs));
+            var reader = readerFactory(new StreamReader(fs));
             loadedVec = reader.Read<Vector3>("vector");
         }
 

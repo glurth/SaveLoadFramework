@@ -63,7 +63,6 @@ public static class SaveLoadFrameworkAdvancedTests
     string fileExtension)
     {
         Debug.Log("=== SaveLoadFramework Advanced/Edge Case Tests ===");
-        bool allPass = true;
 
         // Step 1: Ensure Prefabs Exist in Resources
         string resourcesPath = "Assets/Resources/";
@@ -129,9 +128,8 @@ public static class SaveLoadFrameworkAdvancedTests
         // Serialize
         using (var sw = new StreamWriter(jsonPath))
         {
-            var writer = writerFactory(sw); //new  JsonDataWriter(sw);
+            var writer = writerFactory(sw);
             writer.Write(complex, "Complex1");
-            //complex.Serialize(writer);
             writer.Close();
         }
 
@@ -139,9 +137,8 @@ public static class SaveLoadFrameworkAdvancedTests
         ComplexData loaded;
         using (var sr = new StreamReader(jsonPath))
         {
-            var reader = readerFactory(sr);// new JsonDataReader(sr);
+            var reader = readerFactory(sr);
             loaded= reader.Read<ComplexData>(null);
-            //loaded = ComplexData.ReadAndCreate(reader);
         }
 
         // Check values
@@ -239,17 +236,15 @@ public static class SaveLoadFrameworkAdvancedTests
         string emptyJsonPath = Path.Combine(Application.dataPath, "advancedtest_empty.json");
         using (var sw = new StreamWriter(emptyJsonPath))
         {
-            var writer = writerFactory(sw); //new JsonDataWriter(sw);
+            var writer = writerFactory(sw);
             writer.Write(edge, "Complex Data");
-            //edge.Serialize(writer);
             writer.Close();
         }
         ComplexData loadedEdge;
         using (var sr = new StreamReader(emptyJsonPath))
         {
-            var reader = readerFactory(sr);//new JsonDataReader(sr);
+            var reader = readerFactory(sr);
             loadedEdge = reader.Read<ComplexData>(null);
-            //loadedEdge = ComplexData.ReadAndCreate(reader);
         }
         bool pass_id = loadedEdge.id == edge.id;
         bool pass_name = loadedEdge.name == edge.name;

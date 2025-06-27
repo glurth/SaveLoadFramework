@@ -52,7 +52,7 @@ public class PlayerData : ISaveLoad
 
 #### Option B: Use `[SaveLoadHandler]` Attribute
 
-For types you cannot modify (or want to centralize logic):
+You can create a static class with this attribute to handle serialization for types you cannot modify.  This attribute-based method does NOT provide compile-time type and signature checking of the functions in such a class, such errors will only be exposed at runtime via thrown exceptions. (So, if you can, use option A and implement ISaveLoad)
 
 ```csharp
 using EyE.Serialization;
@@ -88,14 +88,14 @@ Choose a backend (`BinaryDataWriter/BinaryDataReader` or `JsonDataWriter/JsonDat
 using StreamWriter sw = new StreamWriter("player.json"))
 {
     var writer = new JsonDataWriter(sw);
-    playerData.Serialize(writer);
-    writer.Flush();
+    writer.Write(playerData,"PlayerData")
+    writer.Close();
 }
 
 using StreamReader sr = new StreamReader("player.json"))
 {
     JsonDataReader reader = new JsonDataReader(sr);
-    PlayerData loaded = PlayerData.ReadAndCreate(reader);
+    PlayerData loadedPlayerData = reader.Read<PlayerData>("PlayerData")
 }
 ```
 
