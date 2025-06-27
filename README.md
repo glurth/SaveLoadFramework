@@ -19,11 +19,11 @@ Supports both interface-based and attribute-based serialization, with special su
 
 ### 1. Implementing Serialization
 
-You have two main options:
+You have two main options for how to specify the way to serialize a particular type of object (when passed/read to/from an IDataWriter/IDataReader):
 
 #### Option A: Implement `ISaveLoad`
 
-Implement the `ISaveLoad` interface for types you want to control:
+Implement the `ISaveLoad` interface for types you want to serialize
 
 ```csharp
 using EyE.Serialization;
@@ -107,7 +107,7 @@ References to `UnityEngine.Object` fields (e.g., prefabs, materials) are saved a
 The framework uses `ResourceReferenceManager` to map assets <-> paths.  
 To update the asset mapping, run the menu command:
 
-**Tools ? Build ResourceManager Asset**
+**Tools -> Build ResourceManager Asset**
 
 ---
 
@@ -117,13 +117,6 @@ To update the asset mapping, run the menu command:
 List<PlayerData> players = ...;
 writer.Write(players, "Players");
 ```
-
----
-
-## Advanced: Registering Custom Handlers
-
-For 3rd-party or built-in types, register global handlers with `[SaveLoadHandler]`.
-
 
 ---
 
