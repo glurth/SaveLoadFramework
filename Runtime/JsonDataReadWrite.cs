@@ -6,6 +6,30 @@ using System.Reflection;
 
 namespace EyE.Serialization
 {
+
+    public static class StringUtil
+    {
+
+        private const string singleQuote = "\"";
+        private const string escapedQuote = "\\\"";
+
+        public static string Quote(string rawString)
+        {
+            return singleQuote + rawString.Replace(singleQuote, escapedQuote) + singleQuote;
+        }
+
+        public static string UnQuote(string quotedString)
+        {
+            if (quotedString.Length >= 2 &&
+                quotedString[0] == '"' &&
+                quotedString[^1] == '"')
+            {
+                string inner = quotedString.Substring(1, quotedString.Length - 2);
+                return inner.Replace(escapedQuote, singleQuote);
+            }
+            return quotedString;
+        }
+    }
     /// <summary>
     /// Json implementation of the IDataWriter interface
     /// </summary>
@@ -54,7 +78,37 @@ namespace EyE.Serialization
 
         enum LevelType { objectLevel, listElement, ListStart }
 
-        //IDataWriter required function
+        /// <summary>
+        /// Serializes the specified value into a JSON string, wrapping it with the given field name.
+        /// </summary>
+        /// <typeparam name="T">The type of the value to serialize.</typeparam>
+        /// <param name="value">The object to serialize.</param>
+        /// <param name="fieldName">The field name to use as the JSON property.</param>
+        /// <returns>A JSON-formatted string containing the serialized object.</returns>
+        public string WriteString<T>(T value, string fieldName)
+        {
+            MemoryStream memoryStream = new MemoryStream();
+            StreamWriter streamWriter = new StreamWriter(memoryStream);
+            JsonDataWriter jsonWriter = new JsonDataWriter(streamWriter);
+
+            jsonWriter.Write<T>(value, fieldName);
+            jsonWriter.Close();
+
+            streamWriter.Flush();
+            memoryStream.Position = 0;
+
+            StreamReader streamReader = new StreamReader(memoryStream);
+            string result = streamReader.ReadToEnd();
+
+            streamReader.Dispose();
+            streamWriter.Dispose();
+            memoryStream.Dispose();
+
+            return result;
+        }
+    
+
+    //IDataWriter required function
         public void Write<T>(T value, string fieldName)
         {
             bool isInsideArray = contextStack.Count > 0 && contextStack.Peek().Type == Context.ContextType.Array;
@@ -163,10 +217,7 @@ namespace EyE.Serialization
         }
 
 
-        private string Quote(string rawString)
-        {
-            return "\"" + rawString + "\"";
-        }
+
         private bool TrySerializeAtomicValueJsonString<T>(T value, out string jsonString)
         {
             System.Text.StringBuilder str = new System.Text.StringBuilder();
@@ -178,8 +229,8 @@ namespace EyE.Serialization
             if (value is string)
             {
                 string valString = value as string;
-                valString = valString.Replace("\\", "\\\\").Replace("\"", "\\\"");//escape internal quotes
-                jsonString = Quote(valString);
+                //valString = valString.Replace("\\", "\\\\").Replace("\"", "\\\"");//escape internal quotes- now done inside Quote func
+                jsonString = StringUtil.Quote(valString);
                 return true;
             }
             else if (value is int or float or bool or long or double)
@@ -190,7 +241,7 @@ namespace EyE.Serialization
             else if (value.GetType().IsEnum)
             {
                 jsonString = value.ToString();
-                jsonString = Quote(jsonString);
+                jsonString = StringUtil.Quote(jsonString);
                 return true;
             }
             /*else if(value is UnityEngine.Object so)
@@ -220,10 +271,12 @@ namespace EyE.Serialization
             BeginObject();
             foreach (KeyValuePair<K, V> kvp in dict)
             {
-                if (TrySerializeAtomicValueJsonString<K>(kvp.Key, out string keyString))
+                string keyString = WriteString<K>(kvp.Key, "key");
+                if(!string.IsNullOrWhiteSpace(keyString))
+                //if (TrySerializeAtomicValueJsonString<K>(kvp.Key, out string keyString))
                     Write<V>(kvp.Value, keyString);
                 else
-                    throw new FormatException("JsonDataWriter string generation failure:  Key values must be a single atomic element.  <" + typeof(K) + "> is not Atomic.");
+                    throw new FormatException("JsonDataWriter string generation failure:  Unable to convert <" + typeof(K) + "> into a json string");
             }
             EndObject(dict.Count == 0);
         }
@@ -266,6 +319,23 @@ namespace EyE.Serialization
         public T Read<T>(string expectedFieldName, out bool foundNothing)
         {
             return ReadWithKey<T>(expectedFieldName, out string ignored, out foundNothing);
+        }
+        /// <summary>
+        /// assumes passed value has quotes around it- removes them, and unescapes internal quotes before processing.
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="input"></param>
+        /// <returns></returns>
+        private T ReadString<T>(string input)
+        {
+            // Unquote using your UnQuote utility, handles escaping too.
+            input =StringUtil.UnQuote(input);
+
+            // Use a new JsonDataReader for the string.
+            var reader = new JsonDataReader(input);
+
+            // Use null as the field name, since we're reading a value, not a named property.
+            return reader.Read<T>(null);
         }
         /// <summary>
         /// if object is a dictionary entry, this function will provide the key string (via out param), as well as returning the entry's value.
@@ -500,16 +570,7 @@ namespace EyE.Serialization
             return true;
         }
 
-        private string UnQuote(string quotedString)
-        {
-            quotedString = quotedString.Trim();
-            // Trim surrounding quotes
-            if (quotedString.StartsWith("\"") && quotedString.EndsWith("\""))
-            {
-                quotedString = quotedString.Substring(1, quotedString.Length - 2);
-            }
-            return quotedString;
-        }
+
 
         /// <summary>
         /// reads from the provided string to see if it contains an atomic value.  If it does, it will returns the parsed value in the output parameter.
@@ -529,9 +590,9 @@ namespace EyE.Serialization
             }
             if (typeofT == typeof(string))
             {
-                jsonInput = UnQuote(jsonInput);
-                // Proper JSON unescaping
-                jsonInput = jsonInput.Replace("\\\"", "\"").Replace("\\\\", "\\");
+                jsonInput = StringUtil.UnQuote(jsonInput);
+                // Proper JSON unescaping- done inside unquote
+                //jsonInput = jsonInput.Replace("\\\"", "\"").Replace("\\\\", "\\");
 
                 output = (T)(object)jsonInput;
                 return true;
@@ -581,7 +642,7 @@ namespace EyE.Serialization
             {
                 object result;
                 // Trim surrounding quotes
-                jsonInput = UnQuote(jsonInput);
+                jsonInput = StringUtil.UnQuote(jsonInput);
 
                 if (!Enum.TryParse(typeof(T), jsonInput, out result))
                     throw new DataMisalignedException("Failed to Parse enum field: " + fieldName + "  Input provided: " + jsonInput);
@@ -607,14 +668,15 @@ namespace EyE.Serialization
 
             while (reader.Peek() != -1)
             {
+                
                 bool foundNothing;
                 string keyString;
                 V elementValue = ReadWithKey<V>("Value", out keyString, out foundNothing);
                 if (!foundNothing)
                 {
-                    K keyValue;
-                    if(TryParseAtomicJson<K>("Key", keyString, out keyValue))
-                        dict.Add(keyValue, elementValue);
+                    K keyValue=ReadString<K>(keyString);
+                    //if (TryParseAtomicJson<K>("Key", keyString, out keyValue))
+                    dict.Add(keyValue, elementValue);
                 }
             }
             return dict;
