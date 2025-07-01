@@ -112,7 +112,7 @@ namespace EyE.Serialization
         public void Write<T>(T value, string fieldName)
         {
             bool isInsideArray = contextStack.Count > 0 && contextStack.Peek().Type == Context.ContextType.Array;
-
+            Type typeofT = typeof(T);
             if (!isRootWritten)
             {
                 writer.WriteLine("{");
@@ -151,21 +151,25 @@ namespace EyE.Serialization
                 writeFunction(this, value);
                 EndObject();
             }
-            else if (typeof(T).IsGenericType &&
-                     typeof(T).GetGenericTypeDefinition() == typeof(Dictionary<,>))
+            else if (typeofT.IsGenericType &&
+                     typeofT.GetGenericTypeDefinition() == typeof(Dictionary<,>))
             {
                // BeginObject();
-                Type[] types = typeof(T).GetGenericArguments();
+                Type[] types = typeofT.GetGenericArguments();
                 var method = typeof(JsonDataWriter).GetMethod("SerializeDictionary", BindingFlags.Instance | BindingFlags.NonPublic)
                     .MakeGenericMethod(types[0], types[1]);
                 method.Invoke(this, new object[] { value });
                // EndObject();
             }
-            else if( typeof(T).IsArray || 
-                    (typeof(T).IsGenericType && typeof(T).GetGenericTypeDefinition() == typeof(List<>)))
+            else if(typeofT.IsArray || 
+                    (typeofT.IsGenericType && typeofT.GetGenericTypeDefinition() == typeof(List<>)))
             {
                 // BeginArray();
-                Type elementType = typeof(T).GetGenericArguments()[0];
+                Type elementType;
+                if (typeofT.IsArray)
+                    elementType = typeofT.GetElementType();
+                else
+                    elementType = typeofT.GetGenericArguments()[0];
                 var method = typeof(JsonDataWriter).GetMethod("SerializeEnumerable", BindingFlags.Instance | BindingFlags.NonPublic)
                     .MakeGenericMethod(elementType);
                 method.Invoke(this, new object[] { value });
@@ -397,6 +401,7 @@ namespace EyE.Serialization
             }
             else if (typeofT.IsArray)
             {
+                Type elementType = typeof(T).GetElementType();
                 //get the appropriate generic method, for the list's element types
                 Type[] genericParams = typeof(T).GetGenericArguments();
                 MethodInfo gmethod = typeof(JsonDataReader).GetMethod("DeserializeArray", BindingFlags.Instance | BindingFlags.NonPublic);
