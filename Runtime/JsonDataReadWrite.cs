@@ -161,12 +161,12 @@ namespace EyE.Serialization
                 method.Invoke(this, new object[] { value });
                // EndObject();
             }
-            else if (typeof(T).IsGenericType &&
-                     typeof(T).GetGenericTypeDefinition() == typeof(List<>))
+            else if( typeof(T).IsArray || 
+                    (typeof(T).IsGenericType && typeof(T).GetGenericTypeDefinition() == typeof(List<>)))
             {
                 // BeginArray();
                 Type elementType = typeof(T).GetGenericArguments()[0];
-                var method = typeof(JsonDataWriter).GetMethod("SerializeList", BindingFlags.Instance | BindingFlags.NonPublic)
+                var method = typeof(JsonDataWriter).GetMethod("SerializeEnumerable", BindingFlags.Instance | BindingFlags.NonPublic)
                     .MakeGenericMethod(elementType);
                 method.Invoke(this, new object[] { value });
                 // EndArray();
@@ -177,6 +177,7 @@ namespace EyE.Serialization
             }
             return;
         }
+
         void BeginObject()
         {
             //  WriteIndent();
@@ -255,6 +256,20 @@ namespace EyE.Serialization
         }
 
         //referenced via reflection only
+        private void SerializeEnumerable<T>(IEnumerable<T> collection)
+        {
+            BeginArray();
+            bool empty = true;
+            foreach (T element in collection)
+            {
+                Write<T>(element, null);
+                empty = false;
+            }
+            // Use Count property if available, or just check if collection is empty for EndArray
+            EndArray(empty);
+        }
+
+
         private void SerializeList<T>(List<T> list)
         {
             BeginArray();
@@ -379,6 +394,22 @@ namespace EyE.Serialization
             {
                 JsonDataReader subReader = new JsonDataReader(valueString ?? "");
                 return (T)readFunction(subReader);
+            }
+            else if (typeofT.IsArray)
+            {
+                //get the appropriate generic method, for the list's element types
+                Type[] genericParams = typeof(T).GetGenericArguments();
+                MethodInfo gmethod = typeof(JsonDataReader).GetMethod("DeserializeArray", BindingFlags.Instance | BindingFlags.NonPublic);
+                if (gmethod == null)
+                    throw new Exception("Unable to find DeserializeArray method in class JsonDataReader");
+                MethodInfo method = gmethod.MakeGenericMethod(genericParams[0]);
+
+                //create a stream to read the subvalues 
+                JsonDataReader subReader = new JsonDataReader(valueString ?? "");
+
+                //invoke the method on this object
+                object deserializedArray = method.Invoke(subReader, new object[0]);
+                return (T)deserializedArray;
             }
             else if (typeofT.IsGenericType &&
                      typeofT.GetGenericTypeDefinition() == typeof(List<>))
@@ -693,7 +724,19 @@ namespace EyE.Serialization
             }
             return list;
         }
-
+        private T[] DeserializeArray<T>()
+        {
+            List<T> list = new List<T>();
+            while (reader.Peek() != -1)
+            {
+                bool foundNothing;
+                T elementValue = Read<T>("list element", out foundNothing);
+                if (!foundNothing)
+                    list.Add(elementValue);
+            }
+            
+            return list.ToArray();
+        }
 
     }
 }
