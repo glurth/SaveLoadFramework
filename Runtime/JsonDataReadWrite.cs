@@ -731,16 +731,7 @@ namespace EyE.Serialization
         }
         private T[] DeserializeArray<T>()
         {
-            List<T> list = new List<T>();
-            while (reader.Peek() != -1)
-            {
-                bool foundNothing;
-                T elementValue = Read<T>("list element", out foundNothing);
-                if (!foundNothing)
-                    list.Add(elementValue);
-            }
-            
-            return list.ToArray();
+            return DeserializeList<T>().ToArray();
         }
 
     }

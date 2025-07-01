@@ -37,11 +37,19 @@ namespace EyE.Serialization
                 writeFunction(this, value);
                 return;
             }
+            else if (typeof(T).IsArray)
+            {
+                Type itemType = typeof(T).GetElementType();
+                typeof(IDataBinaryCollectionExtensionFunctions)
+                    .GetMethod("SerializeCollection")
+                    .MakeGenericMethod(itemType)
+                    .Invoke(null, new object[] { this, value, fieldName });
+            }
             else if (value is System.Collections.IList list)
             {
                 Type itemType = typeof(T).IsGenericType ? typeof(T).GetGenericArguments()[0] : typeof(object);
                 typeof(IDataBinaryCollectionExtensionFunctions)
-                    .GetMethod("SerializeList")
+                    .GetMethod("SerializeCollection")
                     .MakeGenericMethod(itemType)
                     .Invoke(null, new object[] { this, value, fieldName });
             }
@@ -82,7 +90,7 @@ namespace EyE.Serialization
             {
                 result = reader.ReadString();
                 bool isNull = (string)result == "null";
-                if (isNull) 
+                if (isNull)
                     result = null;
             }
             else if (typeof(T) == typeof(bool)) result = reader.ReadBoolean();
@@ -92,6 +100,14 @@ namespace EyE.Serialization
             else if (SaveLoadRegistry.TryGetReader(typeof(T), out Func<IDataReader, object> readFunction))
             {
                 result = readFunction(this);
+            }
+            else if (typeof(T).IsArray)
+            {
+                Type elementType = typeof(T).GetElementType();
+                var method = typeof(IDataBinaryCollectionExtensionFunctions)
+                    .GetMethod("ReadAndCreateArray")
+                    .MakeGenericMethod(elementType);  // Get/create the appropriate concrete-variant of the generic IDataCollectionExtensionFunctions.ReadAndCreateList method
+                return (T)method.Invoke(null, new object[] { this, "Element" });
             }
             // else if (typeof(UnityEngine.Object).IsAssignableFrom(typeof(T))) result = ResourceReferenceManager.GetObjectByPath(reader.ReadString());
             else if (typeof(T).IsGenericType &&
@@ -167,6 +183,15 @@ namespace EyE.Serialization
             return retVal;
         }
 
+        public static void SerializeCollection<T>(IDataWriter writer, ICollection<T> collection, string valueName = "Element")
+        {
+            // Count the items first (required for binary format)
+            // Avoid enumerating twice: if it's a collection, use .Count, else enumerate
+            int count = collection.Count;
+            writer.Write<int>(count, null);
+            foreach (T val in collection)
+                writer.Write<T>(val, valueName);
+        }
         public static void SerializeList<T>(IDataWriter writer, List<T> lst, string valueName = "Element")
         {
             writer.Write<int>(lst.Count, null);
@@ -187,6 +212,10 @@ namespace EyE.Serialization
                 retVal.Add(val);
             }
             return retVal;
+        }
+        public static T[] ReadAndCreateArray<T>(IDataReader reader, string valueName = "Element")
+        {
+            return ReadAndCreateList<T>(reader, valueName).ToArray();
         }
     }
 }
