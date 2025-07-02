@@ -403,11 +403,10 @@ namespace EyE.Serialization
             {
                 Type elementType = typeof(T).GetElementType();
                 //get the appropriate generic method, for the list's element types
-                Type[] genericParams = typeof(T).GetGenericArguments();
                 MethodInfo gmethod = typeof(JsonDataReader).GetMethod("DeserializeArray", BindingFlags.Instance | BindingFlags.NonPublic);
                 if (gmethod == null)
                     throw new Exception("Unable to find DeserializeArray method in class JsonDataReader");
-                MethodInfo method = gmethod.MakeGenericMethod(genericParams[0]);
+                MethodInfo method = gmethod.MakeGenericMethod(elementType);
 
                 //create a stream to read the subvalues 
                 JsonDataReader subReader = new JsonDataReader(valueString ?? "");
