@@ -141,13 +141,86 @@ public static class SaveLoadFrameworkTests
             allPass = false;
         }
 
+
+
+        //test dictionary writing
+        Dictionary<Vector3, bool[]> testBoolArrayDic = new Dictionary<Vector3, bool[]>
+        {
+            { new Vector3(1, 2, 3), new bool[] { true, false, true } },
+            { new Vector3(0, 0, 0), new bool[] { false, false } },
+            { new Vector3(-1, -2, -3), new bool[] { true } }
+        };
+        string path3 = Path.Combine(Application.dataPath, "boolArrayDictionary.json");
+
+        // Serialize
+        using (FileStream fs = File.Create(path3))
+        {
+            var writer = writerFactory(new StreamWriter(fs));
+            writer.Write<Dictionary<Vector3, bool[]>>(testBoolArrayDic, "dictionary");
+            writer.Close(); // Needed to write closing }
+        }
+
+        // Deserialize
+        Dictionary<Vector3, bool[]> loadedTestBoolArrayDic;
+        using (FileStream fs = File.OpenRead(path3))
+        {
+            var reader = readerFactory(new StreamReader(fs));
+            loadedTestBoolArrayDic = reader.Read<Dictionary<Vector3, bool[]>>("dictionary");
+        }
+        bool testResult = true;
+
+        if (testBoolArrayDic.Count != loadedTestBoolArrayDic.Count)
+        {
+            testResult = false;
+        }
+        else
+        {
+            foreach (KeyValuePair<Vector3, bool[]> pair in testBoolArrayDic)
+            {
+                if (!loadedTestBoolArrayDic.ContainsKey(pair.Key))
+                {
+                    testResult = false;
+                    break;
+                }
+
+                bool[] originalArray = pair.Value;
+                bool[] loadedArray = loadedTestBoolArrayDic[pair.Key];
+
+                if (originalArray.Length != loadedArray.Length)
+                {
+                    testResult = false;
+                    break;
+                }
+
+                for (int i = 0; i < originalArray.Length; i++)
+                {
+                    if (originalArray[i] != loadedArray[i])
+                    {
+                        testResult = false;
+                        break;
+                    }
+                }
+
+                if (!testResult)
+                    break;
+            }
+        }
+        if (testResult)
+            Debug.Log("<color=green>Dictionary<Vector3, bool[]> PASSED</color>");
+        else
+        {
+            Debug.LogError("<color=red>Dictionary<Vector3, bool[]> FAILED</color>");
+            allPass = false;
+        }
+
+        /////////////FINAL RESULT ////////////
         if (allPass)
             Debug.Log("<color=green>ALL SaveLoadFramework tests PASSED</color>");
         else
             Debug.LogError("<color=red>One or more SaveLoadFramework tests FAILED</color>");
 
         // Clean up
-     //   if (File.Exists(path1)) File.Delete(path1);
-    //    if (File.Exists(path2)) File.Delete(path2);
+        //   if (File.Exists(path1)) File.Delete(path1);
+        //    if (File.Exists(path2)) File.Delete(path2);
     }
 }

@@ -15,20 +15,38 @@ namespace EyE.Serialization
 
         public static string Quote(string rawString)
         {
+            if (rawString[0] == singleQuote[0])
+                return rawString;
+
             return singleQuote + rawString.Replace(singleQuote, escapedQuote) + singleQuote;
         }
 
         public static string UnQuote(string quotedString)
         {
-            if (quotedString.Length >= 2 &&
-                quotedString[0] == '"' &&
-                quotedString[^1] == '"')
+            string trimmed = quotedString.Trim();
+            if (trimmed.Length >= 2 &&
+                trimmed[0] == '"' &&
+                trimmed[trimmed.Length-1] == '"')
             {
-                string inner = quotedString.Substring(1, quotedString.Length - 2);
+                string inner = trimmed.Substring(1, trimmed.Length - 2);
                 return inner.Replace(escapedQuote, singleQuote);
             }
             return quotedString;
         }
+
+        public static string UnBracket(string bracketedString)
+        {
+            string trimmed = bracketedString.Trim();
+            if (trimmed.Length >= 2 &&
+                trimmed[0] == '{' &&
+                trimmed[trimmed.Length - 1] == '}')
+            {
+                string inner = trimmed.Substring(1, trimmed.Length - 2);
+                return inner.Replace(escapedQuote, singleQuote);
+            }
+            return bracketedString;
+        }
+        
     }
     /// <summary>
     /// Json implementation of the IDataWriter interface
@@ -128,11 +146,12 @@ namespace EyE.Serialization
             WriteIndent();
             if (!string.IsNullOrEmpty(fieldName))//write key
             {
-
-                if (fieldName.Length >= 2 && fieldName[0] == '"' && fieldName[^1] == '"')
+                fieldName = StringUtil.Quote(fieldName);
+                writer.Write(fieldName+": ");
+                /*if (fieldName.Length >= 2 && fieldName[0] == '"' && fieldName[^1] == '"')
                     writer.Write($"{fieldName}: ");
                 else
-                    writer.Write($"\"{fieldName}\": ");
+                    writer.Write($"\"{fieldName}\": ");*/
             }
 
             if (TrySerializeAtomicValueJsonString(value, out string jsonValue))
@@ -269,7 +288,6 @@ namespace EyE.Serialization
                 Write<T>(element, null);
                 empty = false;
             }
-            // Use Count property if available, or just check if collection is empty for EndArray
             EndArray(empty);
         }
 
@@ -287,17 +305,23 @@ namespace EyE.Serialization
         //referenced via reflection only
         private void SerializeDictionary<K, V>(Dictionary<K, V> dict)
         {
-            BeginObject();
+            // BeginObject();
+            BeginArray();
             foreach (KeyValuePair<K, V> kvp in dict)
             {
-                string keyString = WriteString<K>(kvp.Key, "key");
+                /*BeginObject();
+                Write<K>(kvp.Key, "key");
+                Write<V>(kvp.Value, "Value");
+                EndObject(dict.Count == 0);*/
+                string keyString = WriteString<K>(kvp.Key, null);
                 if(!string.IsNullOrWhiteSpace(keyString))
                 //if (TrySerializeAtomicValueJsonString<K>(kvp.Key, out string keyString))
                     Write<V>(kvp.Value, keyString);
                 else
                     throw new FormatException("JsonDataWriter string generation failure:  Unable to convert <" + typeof(K) + "> into a json string");
             }
-            EndObject(dict.Count == 0);
+            //EndObject(dict.Count == 0);
+            EndArray(dict.Count == 0);
         }
     }
 
@@ -348,14 +372,15 @@ namespace EyE.Serialization
         private T ReadString<T>(string input)
         {
             // Unquote using your UnQuote utility, handles escaping too.
-            input =StringUtil.UnQuote(input);
-
+            input =StringUtil.UnQuote(input.Trim());
+            input = StringUtil.UnBracket(input);
             // Use a new JsonDataReader for the string.
             var reader = new JsonDataReader(input);
 
             // Use null as the field name, since we're reading a value, not a named property.
-            return reader.Read<T>(null);
+            return reader.Read<T>("key");
         }
+
         /// <summary>
         /// if object is a dictionary entry, this function will provide the key string (via out param), as well as returning the entry's value.
         /// TODO: make json system more robust in future by allowing user to load fields out of order, by specific name
@@ -703,6 +728,10 @@ namespace EyE.Serialization
 
             while (reader.Peek() != -1)
             {
+                SkipOpeningBrace();
+              //  K keyValue = Read<K>("key");
+               // V entryValue = Read<V>("value");
+               // dict.Add(keyValue, entryValue);
                 
                 bool foundNothing;
                 string keyString;
@@ -716,6 +745,7 @@ namespace EyE.Serialization
             }
             return dict;
         }
+
         private List<T> DeserializeList<T>()
         {
             List<T> list = new List<T>();
