@@ -3,9 +3,11 @@ using System;
 using System.Collections.Generic;
 using System.Collections;
 using System.Reflection;
+using System.Text;
 
 namespace EyE.Serialization
 {
+
 
     public static class StringUtil
     {
@@ -46,117 +48,216 @@ namespace EyE.Serialization
             }
             return bracketedString;
         }
-        
+
     }
-    /// <summary>
-    /// Json implementation of the IDataWriter interface
-    /// </summary>
-    public class JsonDataWriter : IDataWriter
+
+
+    public class JsonDataWriter:IDataWriter
     {
-
+        private StringBuilder builder = new StringBuilder();
+        private enum Context { Object, Array }
         private Stack<Context> contextStack = new Stack<Context>();
-        private bool isRootWritten = false;
-
-        private class Context
-        {
-            public enum ContextType { Object, Array }
-            public ContextType Type;
-            public bool IsFirst = true;
-
-            public Context(ContextType type) => Type = type;
-        }
+        private bool needsComma = false;
 
         StreamWriter writer;
+
+        #region Creation Flushing Disposal
         public JsonDataWriter(StreamWriter writer) => this.writer = writer;
         bool isClosed = false;
         public void Close()
         {
             if (isClosed) return;
 
-            if (isRootWritten && contextStack.Count == 1)
+            if (contextStack.Count > 0 && contextStack.Peek() == Context.Object)
             {
-                writer.WriteLine();
-                writer.Write("}");
-                contextStack.Pop();
+                EndObject();
             }
 
-            writer.Flush();
+            Flush();
             isClosed = true;
+            writer.Close();
         }
 
-        public void Dispose()//automatically called on using(){} close
+        public void Dispose()
         {
-            Close(); // delegate to manual Close()
+            Close();
         }
 
         public void Flush()
         {
+            writer.Write(builder.ToString());
+            builder.Clear();
             writer.Flush();
         }
+        #endregion
 
-        enum LevelType { objectLevel, listElement, ListStart }
-
-        /// <summary>
-        /// Serializes the specified value into a JSON string, wrapping it with the given field name.
-        /// </summary>
-        /// <typeparam name="T">The type of the value to serialize.</typeparam>
-        /// <param name="value">The object to serialize.</param>
-        /// <param name="fieldName">The field name to use as the JSON property.</param>
-        /// <returns>A JSON-formatted string containing the serialized object.</returns>
-        public string WriteString<T>(T value, string fieldName)
-        {
-            MemoryStream memoryStream = new MemoryStream();
-            StreamWriter streamWriter = new StreamWriter(memoryStream);
-            JsonDataWriter jsonWriter = new JsonDataWriter(streamWriter);
-
-            jsonWriter.Write<T>(value, fieldName);
-            jsonWriter.Close();
-
-            streamWriter.Flush();
-            memoryStream.Position = 0;
-
-            StreamReader streamReader = new StreamReader(memoryStream);
-            string result = streamReader.ReadToEnd();
-
-            streamReader.Dispose();
-            streamWriter.Dispose();
-            memoryStream.Dispose();
-
-            return result;
-        }
-    
-
-    //IDataWriter required function
+        //IDataWriter implementation
         public void Write<T>(T value, string fieldName)
         {
-            bool isInsideArray = contextStack.Count > 0 && contextStack.Peek().Type == Context.ContextType.Array;
-            Type typeofT = typeof(T);
-            if (!isRootWritten)
+            if (contextStack.Count == 0)
+                BeginObject();
+
+            WriteCommaIfNeeded();
+            
+            if (fieldName!=null)
+                WriteFieldName(fieldName);
+
+
+            if (value == null)
             {
-                writer.WriteLine("{");
-                contextStack.Push(new Context(Context.ContextType.Object));
-                isRootWritten = true;
+                builder.Append("null");
+                return;
             }
 
-            if (contextStack.Count > 0 && !contextStack.Peek().IsFirst)
-                writer.WriteLine(",");
-            if (contextStack.Count > 0)
-                contextStack.Peek().IsFirst = false;
 
+            builder.Append(NoContextValueToString(value));
+            
+
+            needsComma = true;
+        }
+
+        #region formatting utility functions
+        private void BeginObject()
+        {
+            builder.Append("{");
+            indentLevel++;
+            NewLine();
+            contextStack.Push(Context.Object);
+            needsComma = false;
+        }
+
+        private void EndObject()
+        {
+            indentLevel--;
+            NewLine();
+            builder.Append("}");
+            
+            contextStack.Pop();
+            needsComma = true;
+        }
+
+        private void BeginArray()
+        {
+            builder.Append("[");
+            indentLevel++;
+            NewLine();
+            contextStack.Push(Context.Array);
+            needsComma = false;
+        }
+
+        private void EndArray()
+        {
+            indentLevel--;
+            NewLine();
+            builder.Append("]");
+            
+            contextStack.Pop();
+            needsComma = true;
+        }
+
+        private void WriteFieldName(string name)
+        {
+          //  WriteIndent();
+            builder.Append($"\"{name}\": ");
+        }
+
+        private void WriteCommaIfNeeded()
+        {
+            if (needsComma)
+            {
+                builder.Append(",");
+                NewLine();
+            }
+        }
+        private int indentLevel = 0;
+        private const string indentString = " ";
+
+        private void WriteIndent()
+        {
+            for (int i = 0; i < indentLevel; i++)
+                builder.Append(indentString);
+        }
+
+        /// <summary>
+        /// newline plus indent on it
+        /// </summary>
+        private void NewLine()
+        {
+            builder.AppendLine();
             WriteIndent();
-            if (!string.IsNullOrEmpty(fieldName))//write key
-            {
-                fieldName = StringUtil.Quote(fieldName);
-                writer.Write(fieldName+": ");
-                /*if (fieldName.Length >= 2 && fieldName[0] == '"' && fieldName[^1] == '"')
-                    writer.Write($"{fieldName}: ");
-                else
-                    writer.Write($"\"{fieldName}\": ");*/
-            }
+        }
+        #endregion
 
-            if (TrySerializeAtomicValueJsonString(value, out string jsonValue))
+
+        //invoked via reflection
+        private void SerializeEnumerable<T>(IEnumerable<T> collection)
+        {
+            BeginArray();
+            bool first = true;
+            foreach (var item in collection)
             {
-                writer.Write(jsonValue);
+            //    if (!first) builder.Append(",");
+                Write(item, null); // No field name in array elements
+                first = false;
+            }
+            EndArray();
+        }
+        //invoked via reflection
+        private void SerializeDictionary<K, V>(Dictionary<K, V> dict)
+        {
+            BeginArray();
+            bool first = true;
+            foreach (var kvp in dict)
+            {
+                if (!first)
+                {
+                    builder.Append(",");
+                    NewLine();
+                }
+                BeginObject();
+                Write(kvp.Key, "Key");
+                Write(kvp.Value, "Value");
+                EndObject();
+                first = false;
+            }
+            EndArray();
+        }
+
+
+
+        /// <summary>
+        /// Generate a json string to encode the value.  May contain formatting INSIDE the value, but will not apply any formatting AROUND it.
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="value"></param>
+        /// <returns></returns>
+        private string NoContextValueToString<T>(T value)
+        {
+            System.Text.StringBuilder str = new System.Text.StringBuilder();
+            string jsonString;
+            Type typeofT = typeof(T);
+            if (value == null)
+            {
+                jsonString = "null";
+                return jsonString;
+            }
+            if (value is string)
+            {
+                string valString = value as string;
+                //valString = valString.Replace("\\", "\\\\").Replace("\"", "\\\"");//escape internal quotes- now done inside Quote func
+                jsonString = StringUtil.Quote(valString);
+                return jsonString;
+            }
+            else if (value is int or float or bool or long or double)
+            {
+                jsonString = Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture);
+                return jsonString;
+            }
+            else if (value.GetType().IsEnum)
+            {
+                jsonString = value.ToString();
+                jsonString = StringUtil.Quote(jsonString);
+                return jsonString;
             }
             else if (value is ISaveLoad custom)
             {
@@ -173,17 +274,14 @@ namespace EyE.Serialization
             else if (typeofT.IsGenericType &&
                      typeofT.GetGenericTypeDefinition() == typeof(Dictionary<,>))
             {
-               // BeginObject();
                 Type[] types = typeofT.GetGenericArguments();
                 var method = typeof(JsonDataWriter).GetMethod("SerializeDictionary", BindingFlags.Instance | BindingFlags.NonPublic)
                     .MakeGenericMethod(types[0], types[1]);
                 method.Invoke(this, new object[] { value });
-               // EndObject();
             }
-            else if(typeofT.IsArray || 
+            else if (typeofT.IsArray ||
                     (typeofT.IsGenericType && typeofT.GetGenericTypeDefinition() == typeof(List<>)))
             {
-                // BeginArray();
                 Type elementType;
                 if (typeofT.IsArray)
                     elementType = typeofT.GetElementType();
@@ -192,138 +290,19 @@ namespace EyE.Serialization
                 var method = typeof(JsonDataWriter).GetMethod("SerializeEnumerable", BindingFlags.Instance | BindingFlags.NonPublic)
                     .MakeGenericMethod(elementType);
                 method.Invoke(this, new object[] { value });
-                // EndArray();
             }
             else
             {
                 throw new NotSupportedException($"Unsupported type: {typeof(T)}");
             }
-            return;
-        }
-
-        void BeginObject()
-        {
-            //  WriteIndent();
-            writer.Write("{");
-            writer.WriteLine();
-            contextStack.Push(new Context(Context.ContextType.Object));
-        }
-
-        void EndObject(bool emptyDictionary = false)
-        {
-            if (!emptyDictionary)
-                writer.WriteLine();
-            contextStack.Pop();
-            WriteIndent();
-            writer.Write("}");
-        }
-
-        void BeginArray()
-        {
-            //   WriteIndent();
-            writer.Write("[");
-            writer.WriteLine();
-            contextStack.Push(new Context(Context.ContextType.Array));
-        }
-
-        void EndArray(bool emptyArray = false)
-        {
-            if (!emptyArray)
-                writer.WriteLine();
-            contextStack.Pop();
-            WriteIndent();
-            writer.Write("]");
-        }
-
-        void WriteIndent()
-        {
-            writer.Write(new string(' ', contextStack.Count * 2));
-        }
-
-
-
-        private bool TrySerializeAtomicValueJsonString<T>(T value, out string jsonString)
-        {
-            System.Text.StringBuilder str = new System.Text.StringBuilder();
-            if (value == null)
-            {
-                jsonString = "null";
-                return true;
-            }
-            if (value is string)
-            {
-                string valString = value as string;
-                //valString = valString.Replace("\\", "\\\\").Replace("\"", "\\\"");//escape internal quotes- now done inside Quote func
-                jsonString = StringUtil.Quote(valString);
-                return true;
-            }
-            else if (value is int or float or bool or long or double)
-            {
-                jsonString = Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture);
-                return true;
-            }
-            else if (value.GetType().IsEnum)
-            {
-                jsonString = value.ToString();
-                jsonString = StringUtil.Quote(jsonString);
-                return true;
-            }
-            /*else if(value is UnityEngine.Object so)
-            {
-                jsonString = ResourceReferenceManager.GetPathOfObject(so);
-                return true;
-            }*/
 
             jsonString = null;
-            return false;
+            return jsonString;
         }
 
-        //referenced via reflection only
-        private void SerializeEnumerable<T>(IEnumerable<T> collection)
-        {
-            BeginArray();
-            bool empty = true;
-            foreach (T element in collection)
-            {
-                Write<T>(element, null);
-                empty = false;
-            }
-            EndArray(empty);
-        }
-
-
-        private void SerializeList<T>(List<T> list)
-        {
-            BeginArray();
-            foreach (T element in list)
-            {
-                Write<T>(element, null); // list elements have no field name
-            }
-            EndArray(list.Count == 0);
-        }
-
-        //referenced via reflection only
-        private void SerializeDictionary<K, V>(Dictionary<K, V> dict)
-        {
-            // BeginObject();
-            BeginArray();
-            foreach (KeyValuePair<K, V> kvp in dict)
-            {
-                /*BeginObject();
-                Write<K>(kvp.Key, "key");
-                Write<V>(kvp.Value, "Value");
-                EndObject(dict.Count == 0);*/
-                string keyString = WriteString<K>(kvp.Key, null);
-                if(!string.IsNullOrWhiteSpace(keyString))
-                //if (TrySerializeAtomicValueJsonString<K>(kvp.Key, out string keyString))
-                    Write<V>(kvp.Value, keyString);
-                else
-                    throw new FormatException("JsonDataWriter string generation failure:  Unable to convert <" + typeof(K) + "> into a json string");
-            }
-            //EndObject(dict.Count == 0);
-            EndArray(dict.Count == 0);
-        }
+        public override string ToString() => builder.ToString();
     }
+
 
     /// <summary>
     /// Concrete Json implementation of the IDataReader interface
@@ -488,13 +467,21 @@ namespace EyE.Serialization
         private void SkipOpeningBrace()
         {
             int ch;
-            while ((ch = reader.Peek()) != -1 && char.IsWhiteSpace((char)ch))
+            while ((ch = reader.Peek()) != -1 && (char.IsWhiteSpace((char)ch)|| (char)ch==',') ) 
                 reader.Read();
 
             if (reader.Peek() == '{' || reader.Peek() == '[')
                 reader.Read(); // consume opening brace
         }
+        private void SkipClosingBrace()
+        {
+            int ch;
+            while ((ch = reader.Peek()) != -1)// && char.IsWhiteSpace((char)ch))
+                reader.Read();
 
+            if (reader.Peek() == '}' || reader.Peek() == ']')
+                reader.Read(); // consume opening brace
+        }
         /// <summary>
         /// reads the next key value pair of the stream into the outputstring, if possible.  returns false, if there are no such objects found in sourceJson
         /// </summary>
@@ -709,11 +696,7 @@ namespace EyE.Serialization
                 output = (T)result;
                 return true;
             }
-            /*else if(typeof(UnityEngine.Object).IsAssignableFrom(typeofT))
-            {
-                output = (T)(object)ResourceReferenceManager.GetObjectByPath(jsonInput);
-                return true;
-            }*/
+
 
             output = default(T);// (T)(object)null;
             return false;
@@ -729,10 +712,11 @@ namespace EyE.Serialization
             while (reader.Peek() != -1)
             {
                 SkipOpeningBrace();
-              //  K keyValue = Read<K>("key");
-               // V entryValue = Read<V>("value");
-               // dict.Add(keyValue, entryValue);
-                
+                K keyValue = Read<K>("key");
+                V entryValue = Read<V>("value");
+                dict.Add(keyValue, entryValue);
+                SkipClosingBrace();
+                /*
                 bool foundNothing;
                 string keyString;
                 V elementValue = ReadWithKey<V>("Value", out keyString, out foundNothing);
@@ -741,7 +725,7 @@ namespace EyE.Serialization
                     K keyValue=ReadString<K>(keyString);
                     //if (TryParseAtomicJson<K>("Key", keyString, out keyValue))
                     dict.Add(keyValue, elementValue);
-                }
+                }*/
             }
             return dict;
         }
@@ -764,4 +748,5 @@ namespace EyE.Serialization
         }
 
     }
+    
 }
