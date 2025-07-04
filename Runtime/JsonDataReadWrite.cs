@@ -476,7 +476,7 @@ namespace EyE.Serialization
         private void SkipClosingBrace()
         {
             int ch;
-            while ((ch = reader.Peek()) != -1)// && char.IsWhiteSpace((char)ch))
+            while ((ch = reader.Peek()) != -1 && char.IsWhiteSpace((char)ch))
                 reader.Read();
 
             if (reader.Peek() == '}' || reader.Peek() == ']')
@@ -714,7 +714,8 @@ namespace EyE.Serialization
                 SkipOpeningBrace();
                 K keyValue = Read<K>("key");
                 V entryValue = Read<V>("value");
-                dict.Add(keyValue, entryValue);
+                if(keyValue!=null)
+                    dict.Add(keyValue, entryValue);
                 SkipClosingBrace();
                 /*
                 bool foundNothing;

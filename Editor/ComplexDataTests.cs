@@ -10,7 +10,7 @@ public class ComplexData : ISaveLoad
 {
     public int id;
     public string name;
-    public List<Dictionary<string, List<float>>> listOfDicts;
+    public List<Dictionary<string, List<float>>> listOfDicts= new List<Dictionary<string, List<float>>>();
     public Vector3 position; // attribute-based handler
     public UnityEngine.Object refPrefab; // Resource reference
 
