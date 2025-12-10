@@ -336,11 +336,15 @@ namespace EyE.Serialization
         //IDataReader interface required function
         public T Read<T>(string expectedFieldName)
         {
-            return ReadWithKey<T>(expectedFieldName, out string ignored, out bool ignoredBool);
+            return ReadWithKey<T>(expectedFieldName, null,  out string ignored, out bool ignoredBool);
+        }
+        public T Read<T>(string expectedFieldName, object[] constructorParams)
+        {
+            return ReadWithKey<T>(expectedFieldName, constructorParams, out string ignored, out bool ignoredBool);
         }
         public T Read<T>(string expectedFieldName, out bool foundNothing)
         {
-            return ReadWithKey<T>(expectedFieldName, out string ignored, out foundNothing);
+            return ReadWithKey<T>(expectedFieldName, null, out string ignored, out foundNothing);
         }
         /// <summary>
         /// assumes passed value has quotes around it- removes them, and unescapes internal quotes before processing.
@@ -368,7 +372,7 @@ namespace EyE.Serialization
         /// <param name="expectedFieldName"></param>
         /// <param name="foundFieldName"></param>
         /// <returns></returns>
-        private T ReadWithKey<T>(string expectedFieldName, out string foundFieldName, out bool foundNothing)
+        private T ReadWithKey<T>(string expectedFieldName,object[] constructorParams, out string foundFieldName, out bool foundNothing)
         {
             Type typeofT = typeof(T);
             string valueString;
@@ -388,11 +392,21 @@ namespace EyE.Serialization
                 T typedResult;
                 //MemoryStream subStream = new MemoryStream(System.Text.Encoding.Unicode.GetBytes(valueString ?? ""));
                 JsonDataReader subReader = new JsonDataReader(valueString ?? "");
-                if (ReaderExtension.TryStaticReadAndCreate<T>(subReader, out typedResult))
+                if (constructorParams == null || constructorParams.Length == 0)
                 {
-                    return typedResult;
+                    if (ReaderExtension.TryStaticReadAndCreate<T>(subReader, out typedResult))
+                    {
+                        return typedResult;
+                    }
                 }
-
+                else
+                {
+                    //new constructor param test
+                    if (ReaderExtension.TryStaticReadAndConstructorCreate<T>(subReader, constructorParams, out typedResult))
+                    {
+                        return typedResult;
+                    }
+                }
                 throw new InvalidOperationException(
                     $"Type {typeofT.FullName} implements ISaveLoad but lacks the required function:  static " + typeofT.Name + " ReadAndCreate(IDataReader reader)."
                 );

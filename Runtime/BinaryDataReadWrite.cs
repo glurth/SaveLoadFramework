@@ -79,8 +79,20 @@ namespace EyE.Serialization
         /// <param name="reader">The BinaryReader to use for reading.</param>
         public BinaryDataReader(BinaryReader reader) => this.reader = reader;
 
+
+
         /// <inheritdoc/>
         public T Read<T>(string fieldname)
+        {
+            return InternalRead<T>(fieldname,null);
+        }
+        //constructor tests
+        public T Read<T>(string fieldname,object[] constructorParams)
+        {
+            return InternalRead<T>(fieldname, constructorParams);
+        }
+        //added constructorParams as test
+        public T InternalRead<T>(string fieldname, object[] constructorParams)
         {
             object result;
 
@@ -133,9 +145,17 @@ namespace EyE.Serialization
             else
             {
                 T typedResult;
-                if (this.TryStaticReadAndCreate<T>(out typedResult))
-                    return typedResult; // found a function for this type, return read result
+                if (constructorParams == null || constructorParams.Length == 0)
+                {
+                    if (this.TryStaticReadAndCreate<T>(out typedResult))
+                        return typedResult; // found a function for this type, return read result
+                }
+                else
+                {
+                    if (this.TryStaticReadAndConstructorCreate<T>(constructorParams, out typedResult))
+                        return typedResult; // found a function for this type, return read result
 
+                }
                 if (typeof(ISaveLoad).IsAssignableFrom(typeof(T))) // objects of this type should not get this far.  if they do- the required static function is not defined by them
                 {
                     throw new InvalidOperationException(

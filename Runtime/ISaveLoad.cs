@@ -36,7 +36,10 @@ namespace EyE.Serialization
         /// <typeparam name="T">The type of the value to read.</typeparam>
         /// <returns>The read value of type T.</returns>
         T Read<T>(string fieldName);
-        
+
+        // new for constructor param test
+        T Read<T>(string fieldName, params object[] constructorParams);
+
     }
 
     /// <summary>
@@ -71,7 +74,7 @@ namespace EyE.Serialization
     {
 
         private static readonly Dictionary<Type, MethodInfo> readAndCreateByTypeCache = new();
-
+        private static readonly Dictionary<Type, MethodInfo> readAndCreateByTypeWithConstructorCache = new();
         /// <summary>
         /// Attempts to invoke the static ReadAndCreate method on type T if it exists.
         /// </summary>
@@ -101,7 +104,28 @@ namespace EyE.Serialization
 
             return false;
         }
+        public static bool TryStaticReadAndConstructorCreate<T>(this IDataReader reader, object[] constrParams, out T value)
+        {
+            value = default;
+            MethodInfo func;
+            if (!readAndCreateByTypeWithConstructorCache.TryGetValue(typeof(T), out func))
+            {
+                func = typeof(T).GetMethod(
+                    "ReadAndCreate",
+                    BindingFlags.Public | BindingFlags.Static,
+                    null,
+                    new[] { typeof(IDataReader), typeof(object[]) },
+                    null);
+                readAndCreateByTypeWithConstructorCache[typeof(T)] = func;
+            }
+            if (func != null && func.ReturnType == typeof(T))
+            {
+                value = (T)func.Invoke(null, new object[] { reader, constrParams });
+                return true;
+            }
 
+            return false;
+        }
     }
 
 
