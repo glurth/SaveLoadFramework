@@ -14,39 +14,154 @@ namespace EyE.Serialization
 
         private const string singleQuote = "\"";
         private const string escapedQuote = "\\\"";
+        // actual characters we need to escape line new lines or tabs (single-char entries) [NOT string entries like "\n", that is what we will convert these into
+        private static readonly char[] ActualChars = new char[]
+        {
+    '"', '\\', '\b', '\f', '\n', '\r', '\t'
+        };
 
+        // what follows the backslash in JSON for the corresponding ActualChars
+        private static readonly char[] EscapeCodes = new char[]
+        {
+    '"', '\\', 'b', 'f', 'n', 'r', 't'
+        };
+
+        // generated maps (actualChar -> escape string, escapeCode -> actualChar)
+        private static readonly Dictionary<char, string> EscapeMap;
+        private static readonly Dictionary<char, char> UnescapeMap;
+
+        static StringUtil()
+        {
+            EscapeMap = new Dictionary<char, string>(ActualChars.Length);
+            UnescapeMap = new Dictionary<char, char>(EscapeCodes.Length);
+
+            for (int i = 0; i < ActualChars.Length; i++)
+            {
+                char actual = ActualChars[i];
+                char code = EscapeCodes[i];
+
+                // e.g. actual '\n' -> escape string "\\n"
+                EscapeMap[actual] = "\\" + code;
+
+                // e.g. code 'n' -> actual '\n'
+                UnescapeMap[code] = actual;
+            }
+        }
+        /// <summary>
+        /// Escape the characters in rawString so it is safe to place INSIDE JSON quotes.
+        /// This will include '\', so escape codes like "\n" typed out in the string, will be .. UNescaped (for later deserialization).
+        /// Returns null if input is null. Does NOT add surrounding quotes.
+        /// </summary>
+        public static string EscapeStringForJson(string rawString)
+        {
+            if (rawString == null)
+                return null;
+
+            if (rawString.Length == 0)
+                return string.Empty;
+
+            StringBuilder sb = new StringBuilder(rawString.Length + 16);
+            foreach (char c in rawString)
+            {
+                if (EscapeMap.TryGetValue(c, out string rep))
+                    sb.Append(rep);
+                else if (char.IsControl(c) || c < ' ') //it is a control character, but not in our EscapeMap, write character code directly
+                    sb.AppendFormat("\\u{0:X4}", (int)c);
+                else
+                    sb.Append(c);
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Unescape the JSON-escaped content (the interior of a JSON string).
+        /// Returns null if input is null.
+        /// </summary>
+        public static string UnescapeJsonString(string escapedString)
+        {
+            if (escapedString == null)
+                return null;
+
+            if (escapedString.Length == 0)
+                return string.Empty;
+
+            StringBuilder sb = new StringBuilder(escapedString.Length);
+            for (int i = 0; i < escapedString.Length; i++)
+            {
+                char c = escapedString[i];
+                if (c == '\\' && i + 1 < escapedString.Length)
+                {
+                    i++;
+                    char esc = escapedString[i];
+                    if (esc == 'u')
+                    {
+                        // \uXXXX
+                        if (i + 4 < escapedString.Length)
+                        {
+                            string hex = escapedString.Substring(i + 1, 4);
+                            if (int.TryParse(hex, System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture, out int code))
+                            {
+                                sb.Append((char)code);
+                                i += 4;
+                                continue;
+                            }
+                        }
+                        // malformed \u or truncated -> append literal sequence "\u"
+                        sb.Append("\\u");
+                        continue;
+                    }
+
+                    if (UnescapeMap.TryGetValue(esc, out char actual))
+                        sb.Append(actual);
+                    else // unknown escape sequence -> append the escaped character as-is
+                        sb.Append(esc);
+                }
+                else
+                {
+                    sb.Append(c);
+                }
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// In addition to putting quotes around the provide string, it will escape all literal characters that require it.  This will include '\', so escape codes like "\n" typed out in the string, will be .. double-escaped.
+        /// </summary>
+        /// <param name="rawString">the string to quote and escape.</param>
+        /// <returns>Json friendly representation of a string</returns>
         public static string Quote(string rawString)
         {
-            if (rawString[0] == singleQuote[0])
-                return rawString;
+            if (rawString == null)
+                return "null";
 
-            return singleQuote + rawString.Replace(singleQuote, escapedQuote) + singleQuote;
+            if (rawString.Length == 0)
+                return "\"\"";
+
+            StringBuilder sb = new StringBuilder(rawString.Length + 16);
+            sb.Append('"');
+            sb.Append(EscapeStringForJson(rawString));
+            sb.Append('"');
+            return sb.ToString();
         }
 
+        /// <summary>
+        /// Process will, in addition to removing outside quotes, convert all escape sequences found inside into their literal characters in the return string.
+        /// </summary>
+        /// <param name="quotedString">string to be unquoted: e.g. json encoded string data</param>
+        /// <returns></returns>
         public static string UnQuote(string quotedString)
         {
-            string trimmed = quotedString.Trim();
-            if (trimmed.Length >= 2 &&
-                trimmed[0] == '"' &&
-                trimmed[trimmed.Length-1] == '"')
-            {
-                string inner = trimmed.Substring(1, trimmed.Length - 2);
-                return inner.Replace(escapedQuote, singleQuote);
-            }
-            return quotedString;
-        }
+            if (quotedString == null)
+                return null;
 
-        public static string UnBracket(string bracketedString)
-        {
-            string trimmed = bracketedString.Trim();
-            if (trimmed.Length >= 2 &&
-                trimmed[0] == '{' &&
-                trimmed[trimmed.Length - 1] == '}')
+            string trimmed = quotedString.Trim();
+            if (trimmed.Length >= 2 && trimmed[0] == '"' && trimmed[trimmed.Length - 1] == '"')
             {
-                string inner = trimmed.Substring(1, trimmed.Length - 2);
-                return inner.Replace(escapedQuote, singleQuote);
+                return UnescapeJsonString(trimmed.Substring(1, trimmed.Length - 2));
             }
-            return bracketedString;
+
+            // Not quoted — return original trimmed string
+            return quotedString;
         }
 
     }
@@ -193,12 +308,12 @@ namespace EyE.Serialization
         private void SerializeEnumerable<T>(IEnumerable<T> collection)
         {
             BeginArray();
-            bool first = true;
+            //bool first = true;
             foreach (var item in collection)
             {
             //    if (!first) builder.Append(",");
                 Write(item, null); // No field name in array elements
-                first = false;
+              //  first = false;
             }
             EndArray();
         }
@@ -345,23 +460,6 @@ namespace EyE.Serialization
         public T Read<T>(string expectedFieldName, out bool foundNothing)
         {
             return ReadWithKey<T>(expectedFieldName, null, out string ignored, out foundNothing);
-        }
-        /// <summary>
-        /// assumes passed value has quotes around it- removes them, and unescapes internal quotes before processing.
-        /// </summary>
-        /// <typeparam name="T"></typeparam>
-        /// <param name="input"></param>
-        /// <returns></returns>
-        private T ReadString<T>(string input)
-        {
-            // Unquote using your UnQuote utility, handles escaping too.
-            input =StringUtil.UnQuote(input.Trim());
-            input = StringUtil.UnBracket(input);
-            // Use a new JsonDataReader for the string.
-            var reader = new JsonDataReader(input);
-
-            // Use null as the field name, since we're reading a value, not a named property.
-            return reader.Read<T>("key");
         }
 
         /// <summary>
@@ -631,8 +729,6 @@ namespace EyE.Serialization
             return true;
         }
 
-
-
         /// <summary>
         /// reads from the provided string to see if it contains an atomic value.  If it does, it will returns the parsed value in the output parameter.
         /// </summary>
@@ -653,15 +749,13 @@ namespace EyE.Serialization
             {
                 jsonInput = StringUtil.UnQuote(jsonInput);
                 // Proper JSON unescaping- done inside unquote
-                //jsonInput = jsonInput.Replace("\\\"", "\"").Replace("\\\\", "\\");
-
                 output = (T)(object)jsonInput;
                 return true;
             }
             else if (typeofT == typeof(int))
             {
                 int result;
-                if (!int.TryParse(jsonInput, out result))
+                if (!int.TryParse(jsonInput,System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out result))
                     throw new DataMisalignedException("Failed to Parse int field: " + fieldName + "  Input provided: " + jsonInput);
                 output = (T)(object)result;
                 return true;
@@ -669,7 +763,7 @@ namespace EyE.Serialization
             else if (typeofT == typeof(float))
             {
                 float result;
-                if (!float.TryParse(jsonInput, out result))
+                if (!float.TryParse(jsonInput, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out result))
                     throw new DataMisalignedException("Failed to Parse float field: " + fieldName + "  Input provided: " + jsonInput);
                 output = (T)(object)result;
                 return true;
@@ -677,7 +771,7 @@ namespace EyE.Serialization
             else if (typeofT == typeof(long))
             {
                 long result;
-                if (!long.TryParse(jsonInput, out result))
+                if (!long.TryParse(jsonInput, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out result))
                     throw new DataMisalignedException("Failed to Parse long field: " + fieldName + "  Input provided: " + jsonInput);
                 output = (T)(object)result;
                 return true;
@@ -685,7 +779,7 @@ namespace EyE.Serialization
             else if (typeofT == typeof(double))
             {
                 double result;
-                if (!double.TryParse(jsonInput, out result))
+                if (!double.TryParse(jsonInput, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out result))
                     throw new DataMisalignedException("Failed to Parse double field: " + fieldName + "  Input provided: " + jsonInput);
                 output = (T)(object)result;
                 return true;
@@ -712,7 +806,7 @@ namespace EyE.Serialization
             }
 
 
-            output = default(T);// (T)(object)null;
+            output = default(T);
             return false;
         }
         #endregion

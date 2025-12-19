@@ -22,8 +22,23 @@ namespace EyE.Serialization
         /// <inheritdoc/>
         public void Write<T>(T value, string fieldName = null)
         {
-            if (value is null) writer.Write("null");
-            else if (value is int i) writer.Write(i);
+            // We will write a single-byte marker for reference types indicating null/not-null:
+            // 0 => null, 1 => value present. Value types are written without a marker because the cannot be null.
+            if (!typeof(T).IsValueType)
+            {
+                if (value == null)
+                {
+                    writer.Write((byte)0);
+                    return;
+                }
+                else
+                {
+                    writer.Write((byte)1);
+                }
+            }
+            //if (value is null) writer.Write("null");
+            //else 
+            if (value is int i) writer.Write(i);
             else if (value is float f) writer.Write(f);
             else if (value is string s) writer.Write(s);
             else if (value is bool b) writer.Write(b);
@@ -94,6 +109,18 @@ namespace EyE.Serialization
         //added constructorParams as test
         public T InternalRead<T>(string fieldname, object[] constructorParams)
         {
+            // If this is a reference type, first read the null marker byte.
+            if (!typeof(T).IsValueType) // value types cannot be null, so no need to set/check marker flag
+            {
+                byte marker = reader.ReadByte();
+                if (marker == 0)
+                {
+                    // default(T), when T is a reference type, returns null
+                    return default(T);
+                }
+                // marker == 1 -> value present, continue reading
+            }
+
             object result;
 
             if (typeof(T) == typeof(int)) result = reader.ReadInt32();
@@ -116,7 +143,7 @@ namespace EyE.Serialization
             else if (typeof(T).IsArray)
             {
                 Type elementType = typeof(T).GetElementType();
-                var method = typeof(IDataBinaryCollectionExtensionFunctions)
+                MethodInfo method = typeof(IDataBinaryCollectionExtensionFunctions)
                     .GetMethod("ReadAndCreateArray")
                     .MakeGenericMethod(elementType);  // Get/create the appropriate concrete-variant of the generic IDataCollectionExtensionFunctions.ReadAndCreateList method
                 return (T)method.Invoke(null, new object[] { this, "Element" });
@@ -127,7 +154,7 @@ namespace EyE.Serialization
             {
                 Type[] genericParams = typeof(T).GetGenericArguments();//what type are the elements os the list?
                                                                        //note: we ASSUME the correct number of generic parameters is returned in the array
-                var method = typeof(IDataBinaryCollectionExtensionFunctions)
+                MethodInfo method = typeof(IDataBinaryCollectionExtensionFunctions)
                     .GetMethod("ReadAndCreateList")
                     .MakeGenericMethod(genericParams[0]);  // Get/create the appropriate concrete-variant of the generic IDataCollectionExtensionFunctions.ReadAndCreateList method
                 return (T)method.Invoke(null, new object[] { this, "Element" });// invoke the static function to deserialize into a new list
