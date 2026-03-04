@@ -823,18 +823,14 @@ namespace EyE.Serialization
             while (reader.Peek() != -1)
             {
                 SkipOpeningBrace();
-                ConsumeWhiteSpace();
-                if (reader.Peek() == '}' || reader.Peek() == ']')//check for immidiate end
+                K keyValue = Read<K>("key",out bool foundNothing);
+                if (!foundNothing)
                 {
+                    V entryValue = Read<V>("value");
+                    if (keyValue != null)
+                        dict.Add(keyValue, entryValue);
                     SkipClosingBrace();
-                    return dict;
                 }
-                K keyValue = Read<K>("key");
-                V entryValue = Read<V>("value");
-                if(keyValue!=null)
-                    dict.Add(keyValue, entryValue);
-                SkipClosingBrace();
-
             }
             return dict;
         }

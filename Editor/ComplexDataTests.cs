@@ -271,10 +271,34 @@ public static class SaveLoadFrameworkAdvancedTests
             Debug.Log("Edge case test PASSED");
         }
 
+        //empty dictionarytest
+        Dictionary<int, string> emptyDict = new Dictionary<int, string>();
+        string emptyDictJsonPath = Path.Combine(Application.dataPath, "advancedtest_emptydict.json");
+        using (var sw = new StreamWriter(emptyDictJsonPath))
+        {
+            var writer = writerFactory(sw);
+            writer.Write(emptyDict, "EmptyDict");
+            writer.Close();
+        }
+        Dictionary<int, string> loadedEmptyDict;
+        using (var sr = new StreamReader(emptyDictJsonPath))
+        {
+            var reader = readerFactory(sr);
+            loadedEmptyDict = reader.Read<Dictionary<int, string>>(null);
+        }
+        if (loadedEmptyDict == null || loadedEmptyDict.Count != 0)
+        {
+            Debug.LogError($"EmptyDict Test case test FAILED: non-zero count found");
+            pass = false;
+        }
+
+
         if (pass)
             Debug.Log("<color=green>Advanced/Edge SaveLoadFramework tests PASSED</color>");
         else
             Debug.LogError("<color=red>One or more Advanced/Edge SaveLoadFramework tests FAILED</color>");
+
+
 
         // Clean up
      //   if (File.Exists(jsonPath)) File.Delete(jsonPath);
