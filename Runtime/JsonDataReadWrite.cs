@@ -576,20 +576,23 @@ namespace EyE.Serialization
         }
 
         #region string processing
-        private void SkipOpeningBrace()
+        private void ConsumeWhiteSpace()
         {
             int ch;
-            while ((ch = reader.Peek()) != -1 && (char.IsWhiteSpace((char)ch)|| (char)ch==',') ) 
+            while ((ch = reader.Peek()) != -1 && (char.IsWhiteSpace((char)ch) || (char)ch == ','))
                 reader.Read();
+        }
+
+        private void SkipOpeningBrace()
+        {
+            ConsumeWhiteSpace();
 
             if (reader.Peek() == '{' || reader.Peek() == '[')
                 reader.Read(); // consume opening brace
         }
         private void SkipClosingBrace()
         {
-            int ch;
-            while ((ch = reader.Peek()) != -1 && char.IsWhiteSpace((char)ch))
-                reader.Read();
+            ConsumeWhiteSpace();
 
             if (reader.Peek() == '}' || reader.Peek() == ']')
                 reader.Read(); // consume opening brace
@@ -820,21 +823,18 @@ namespace EyE.Serialization
             while (reader.Peek() != -1)
             {
                 SkipOpeningBrace();
+                ConsumeWhiteSpace();
+                if (reader.Peek() == '}' || reader.Peek() == ']')//check for immidiate end
+                {
+                    SkipClosingBrace();
+                    return dict;
+                }
                 K keyValue = Read<K>("key");
                 V entryValue = Read<V>("value");
                 if(keyValue!=null)
                     dict.Add(keyValue, entryValue);
                 SkipClosingBrace();
-                /*
-                bool foundNothing;
-                string keyString;
-                V elementValue = ReadWithKey<V>("Value", out keyString, out foundNothing);
-                if (!foundNothing)
-                {
-                    K keyValue=ReadString<K>(keyString);
-                    //if (TryParseAtomicJson<K>("Key", keyString, out keyValue))
-                    dict.Add(keyValue, elementValue);
-                }*/
+
             }
             return dict;
         }
