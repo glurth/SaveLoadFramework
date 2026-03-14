@@ -24,15 +24,31 @@ namespace EyE.Serialization
             }
             return string.Empty;
         }
+
+
         //primary- convinience/consistency function of class
         public static UnityEngine.Object GetObjectByPath(string path)
         {
-            return Resources.Load<UnityEngine.Object>(path);
+//            return Resources.Load<UnityEngine.Object>(path);
+
+            UnityEngine.Object objectRef = Resources.Load<UnityEngine.Object>(path);
+            
+            if (objectRef != null) return objectRef;
+            
+            ResourceReferenceManager current = Instance;
+            while (current != null)
+            {
+                if (current.pathToObjectDict.TryGetValue(path, out Object asset))
+                    return asset;
+                current = current.previousVersion;
+            }
+
+            return null;
         }
         //primary- convinience/consistency function of class
         public static T GetObjectByPath<T>(string path) where T:UnityEngine.Object
         {
-            return Resources.Load<T>(path);
+            return GetObjectByPath(path) as T;//  Resources.Load<T>(path);
         }
 
 
@@ -47,6 +63,16 @@ namespace EyE.Serialization
         [SerializeField]
         private List<Entry> entries = new List<Entry>();
 
+        /// <summary>
+        /// User specified in the inspector:  Links to the previous release's version of the ResourceReferenceManager.  Used when loading previous version save file, and asset paths save in the file, have changed with the new version.
+        /// These can be chained for multiple versions.
+        /// For first release, this should be left null.
+        /// </summary>
+        [SerializeField]
+        private ResourceReferenceManager previousVersion = null; // Link to prior version
+
+
+
         static private ResourceReferenceManager Create(List<Entry> entries)
         {
             ResourceReferenceManager manager = ScriptableObject.CreateInstance<ResourceReferenceManager>();
@@ -55,7 +81,10 @@ namespace EyE.Serialization
             return manager;
         }
 
+
+
         private Dictionary<UnityEngine.Object, string> objectToPathDict = new Dictionary<Object, string>();
+        private Dictionary<string,UnityEngine.Object> pathToObjectDict = new Dictionary<string,Object>();
         private static ResourceReferenceManager instance = null;
 
         private static string OutputPath => storagePath + "/" + filenameWithExtension;
@@ -65,6 +94,7 @@ namespace EyE.Serialization
 
         /// <summary>
         /// rebuild dictionary from serializable list
+        /// throws dictionary exceptions on double entries
         /// </summary>
         private void BuildLookup()
         {
@@ -72,10 +102,8 @@ namespace EyE.Serialization
             for (int i = 0; i < entries.Count; i++)
             {
                 Entry entry = entries[i];
-                if (entry.asset != null && !objectToPathDict.ContainsKey(entry.asset))
-                {
-                    objectToPathDict.Add(entry.asset, entry.path);
-                }
+                objectToPathDict.Add(entry.asset, entry.path);
+                pathToObjectDict.Add(entry.path, entry.asset);
             }
         }
 
